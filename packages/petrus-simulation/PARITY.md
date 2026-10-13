@@ -110,6 +110,8 @@ These are points the profile states and the upstream tests leave implicit:
   `server_shutting_down`;
 - a client that disconnects does not cancel admitted work, and the slot is
   freed afterwards;
+- the five-second connection timeout bounds a response write to a client
+  that never reads, so a close waiting for that write returns after it;
 - every error body is compact, sorted, strict JSON with exactly `code` and
   `message`.
 

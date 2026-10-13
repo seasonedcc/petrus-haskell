@@ -14,30 +14,21 @@ module Petrus.Viewer.Log
 import Control.Concurrent (forkOn, yield)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Concurrent.STM
-import Control.Exception (SomeException, try)
-import Control.Monad (forever, void, when)
+import Control.Exception (IOException, SomeException, try)
+import Control.Monad (forever, void)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.Time.Calendar (toGregorian)
 import Data.Time.Clock (UTCTime (..), diffTimeToPicoseconds, getCurrentTime)
 import Data.ByteString.Internal qualified as BI
-import Data.ByteString.Unsafe qualified as BU
 import Data.Word (Word8)
-import Foreign.C.Error (eINTR, getErrno)
-import Foreign.C.Types (CInt (..), CSize (..))
-import Foreign.Ptr (Ptr, castPtr, plusPtr)
+import Foreign.C.Types (CInt (..))
 import Foreign.Storable (pokeByteOff)
 import GHC.Clock (getMonotonicTimeNSec)
+import Petrus.Posix.File qualified as Posix
 import System.IO (Handle, hFlush, stdout)
 import System.Posix.Files (getFdStatus, isCharacterDevice, isRegularFile)
-import System.Posix.Types (CSsize (..))
-
--- | Only used on files and character devices ('DirectLogger'), where Node
--- writes synchronously and blocks its event loop for the duration: an
--- unsafe call blocks the capability the same way, and spares the
--- capability hand-off a safe call costs when other threads are runnable
--- (with requests in flight, every logged line).
-foreign import ccall unsafe "write" c_write :: CInt -> Ptr Word8 -> CSize -> IO CSsize
+import System.Posix.Types (Fd (..))
 
 -- | @new Date().toISOString()@: millisecond precision, UTC, @Z@ suffix.
 isoTimestamp :: IO ByteString
@@ -112,8 +103,11 @@ newAsyncLogger cap h = do
 -- Node's @console.log@ / @console.error@ write it. Node writes
 -- synchronously to files and terminals, and asynchronously to pipes
 -- (macOS) and sockets: to a file or a character device (a terminal,
--- @/dev/null@) each line is one @write@ from the thread that logs it (so
--- the line costs a system call and no thread hand-off); to anything else
+-- @/dev/null@) each line is one @write@ from the thread that logs it
+-- (petrus-posix's safe 'Petrus.Posix.File.writeAll': a system call and no
+-- hand-off to a writer thread; an unsafe call measured 2-6% faster on the
+-- logging relay, which stays ahead of Node without it, bench/RESULTS.md,
+-- "Low-level code, measured"); to anything else
 -- the lines go through 'newAsyncLogger', so a slow reader never stalls the
 -- caller.
 newConsoleLogger :: Int -> Handle -> CInt -> IO Logger
@@ -134,16 +128,6 @@ newStdoutLogger cap = newConsoleLogger cap stdout 1
 
 logLine :: Logger -> ByteString -> IO ()
 logLine (AsyncLogger q) line = atomically (writeTQueue q line)
-logLine (DirectLogger fd lock) line = withMVar lock $ \() ->
-  BU.unsafeUseAsCStringLen (line <> "\n") $ \(p, n) -> writeAll (castPtr p) n
-  where
-    -- a closed or broken stream drops the line, as the async logger does
-    writeAll p n
-      | n <= 0 = pure ()
-      | otherwise = do
-          r <- c_write fd p (fromIntegral n)
-          if r >= 0
-            then writeAll (p `plusPtr` fromIntegral r) (n - fromIntegral r)
-            else do
-              e <- getErrno
-              when (e == eINTR) (writeAll p n)
+-- A closed or broken stream drops the line, as the async logger does.
+logLine (DirectLogger fd lock) line =
+  withMVar lock $ \() -> void (try @IOException (Posix.writeAll (Fd fd) (line <> "\n")))

@@ -44,6 +44,7 @@ import Foreign.C.Types (CInt (..))
 import GHC.Foreign qualified as GHC
 import GHC.IO.Encoding (getFileSystemEncoding)
 import GHC.IO.Exception (IOException (..))
+import Petrus.Posix.Path qualified as Path
 import System.Posix.ByteString.FilePath (RawFilePath)
 import System.Posix.Directory.ByteString (getWorkingDirectory)
 import System.Posix.Files.ByteString
@@ -164,23 +165,10 @@ realpath mode filename = do
       Just i -> B.take i path
       Nothing -> "/"
 
--- | CPython @posixpath.normpath@.
+-- | CPython @posixpath.normpath@ on a byte path (petrus-posix's
+-- 'Path.normpath', exact on the bytes since it inspects only @/@ and @.@).
 normpath :: ByteString -> ByteString
-normpath path
-  | B.null path = "."
-  | otherwise =
-      let initialSlashes
-            | "//" `B.isPrefixOf` path && not ("///" `B.isPrefixOf` path) = 2
-            | "/" `B.isPrefixOf` path = 1
-            | otherwise = 0 :: Int
-          step acc comp
-            | B.null comp || comp == "." = acc
-            | comp /= ".." || (initialSlashes == 0 && null acc) || (take 1 acc == [".."]) = comp : acc
-            | not (null acc) = drop 1 acc
-            | otherwise = acc
-          comps = reverse (foldl step [] (BC.split '/' path))
-          joined = BC.replicate initialSlashes '/' <> B.intercalate "/" comps
-       in if B.null joined then "." else joined
+normpath = BC.pack . Path.normpath . BC.unpack
 
 -- | CPython @posixpath.dirname@.
 dirname :: ByteString -> ByteString

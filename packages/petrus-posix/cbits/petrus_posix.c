@@ -220,8 +220,9 @@ static void free_entries(struct entry *entries, size_t count)
 }
 
 /* list(os.scandir(fd)) with each entry's is_dir(follow_symlinks=False);
- * is_dir is -1 when that answer raised something other than ENOENT and 0
- * when the entry vanished (skipped, as CPython does). */
+ * is_dir is 1 for a directory, 0 otherwise, -1 when that answer raised
+ * something other than ENOENT, and 2 when the entry vanished (skipped, as
+ * CPython does). */
 static int scan(int fd, struct entry **out, size_t *count)
 {
     int copy = dup(fd);

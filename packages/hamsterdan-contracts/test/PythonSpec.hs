@@ -15,7 +15,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Python.Exception (PythonException (..), pythonExceptionStr)
 import Hamsterdan.Python.Json qualified as Json
-import Hamsterdan.Python.Object (PV (..), loadsValue, toJson)
+import Hamsterdan.Python.Object (PyObject (..), loadsValue, toJson)
 import Hamsterdan.Python.Text qualified as Py
 import Hamsterdan.Python.Url (SplitResult)
 import Hamsterdan.Python.Url qualified as Url
@@ -55,7 +55,7 @@ spec = describe "Hamsterdan.Python against the pinned interpreter" $ do
   it "the dynamic value model loads UTF-16 and UTF-32 JSON bytes" $
     -- The exporter's copy refused them (UnsupportedJsonEncoding).
     mapM_
-      (\b -> fmap (either (const Null) id . toJson False) (loadsValue (PBytes b)) `shouldBe` Right (Array [Int 1, String "\233"]))
+      (\b -> fmap (either (const Null) id . toJson False) (loadsValue (PyBytes b)) `shouldBe` Right (Array [Int 1, String "\233"]))
       [encoder "[1, \"\233\"]" | encoder <- [TE.encodeUtf16LE, TE.encodeUtf16BE, TE.encodeUtf32LE, TE.encodeUtf32BE]]
 
 -- * Running the reference

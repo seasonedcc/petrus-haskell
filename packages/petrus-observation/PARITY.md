@@ -47,11 +47,13 @@ parameters are separate Hspec examples where they are ported.
 
 - 22 port upstream tests through Instance doors (`ObservationSpec`;
   parametrized cases are separate examples).
-- 23 drive a real Engine (`EngineSpec`): the 3 Engine tests, 18 Engine-driven
+- 24 drive a real Engine (`EngineSpec`): the 3 Engine tests, 18 Engine-driven
   twins of the projection tests (the 6 malformed-cursor cases are separate
-  examples, now with the reference's full refusal texts), and 2 beyond
-  upstream (a sensor inside `advance` is refused a protocol view but may read
-  `status`; a closed Engine refuses every view with the reference's text).
+  examples, now with the reference's full refusal texts), and 3 beyond
+  upstream (a document read blocks at the same writer barrier as a snapshot,
+  then sees the after state; a sensor inside `advance` is refused a protocol
+  view but may read `status`; a closed Engine refuses every view with the
+  reference's text).
 - 3 test the Haskell seam.
 - 26 come from the differential corpus: 10 scenarios and 16 refusals.
 - 1 is a live round trip beyond upstream (`LiveSpec`): every scenario's

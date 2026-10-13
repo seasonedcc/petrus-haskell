@@ -14,15 +14,17 @@
 -- 'PythonException' with the same class and @str()@), which the command
 -- line prints as the last line of the reference's traceback ('errorLine').
 --
--- The exporter and the operator both read untrusted values this way; the
--- model lives here, beside the rest of the CPython layer, so neither
--- depends on the other for it.
+-- The values are petrus-json's 'PyObject', the port's one Python value
+-- model, with its @repr()@, @str()@, @type()@, truthiness and @==@; the
+-- built-ins the exporter and the operator apply beyond those live here,
+-- beside the rest of the CPython layer, so neither depends on the other
+-- for them.
 module Hamsterdan.Python.Object
   ( -- * Values
-    PV (..)
-  , typeName
+    PV
+  , PyObject (..)
+  , pyTypeName
   , fromJson
-  , forceValue
   , toJson
 
     -- * Exceptions
@@ -39,8 +41,7 @@ module Hamsterdan.Python.Object
     -- * Built-ins
   , pyStr
   , pyRepr
-  , bytesRepr
-  , truthy
+  , pyTruthy
   , pyEq
   , pyInt
   , intText
@@ -63,7 +64,7 @@ module Hamsterdan.Python.Object
 import Control.Exception (throwIO)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.List (find, sortOn)
+import Data.List (sortOn)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Bifunctor (first)
@@ -72,61 +73,15 @@ import Hamsterdan.Python.Exception (PythonException (..), dumpsError, keyError, 
 import Hamsterdan.Python.Text (strRepr)
 import Hamsterdan.Python.Text qualified as Py
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps)
-import Petrus.Json.Python (loadsUtf8, pythonBytesRepr, pythonDoubleRepr)
+import Petrus.Json.Python (PyObject (..), fromJson, loadsUtf8, pyEq, pyRepr, pyStr, pyTruthy, pyTypeName, pythonBytesRepr)
 import Petrus.Json.Python qualified as Python
 
 -- ---------------------------------------------------------------------------
 -- Values
 
 -- | A Python object as the exporter meets it: what @json.loads@ builds and
--- what @sqlite3@ returns for a column. Dictionary keys are always @str@
--- (JSON object members and column names).
-data PV
-  = PNone
-  | PBool Bool
-  | PInt Integer
-  | PFloat Double
-  | PStr Text
-  | PBytes ByteString
-  | PList [PV]
-  | PDict [(Text, PV)]
-  deriving stock (Show)
-
--- | @type(value).__name__@.
-typeName :: PV -> Text
-typeName = \case
-  PNone -> "NoneType"
-  PBool _ -> "bool"
-  PInt _ -> "int"
-  PFloat _ -> "float"
-  PStr _ -> "str"
-  PBytes _ -> "bytes"
-  PList _ -> "list"
-  PDict _ -> "dict"
-
--- | The Python object @json.loads@ builds (a repeated member keeps its
--- first position and takes its last value: the parser has settled that).
-fromJson :: Json -> PV
-fromJson = \case
-  Null -> PNone
-  Bool b -> PBool b
-  Int i -> PInt i
-  Float d -> PFloat d
-  String s -> PStr s
-  Array items -> PList (map fromJson items)
-  Object members -> PDict [(k, fromJson v) | (k, v) <- members]
-
--- | Evaluate a value completely.
-forceValue :: PV -> ()
-forceValue = \case
-  PNone -> ()
-  PBool b -> b `seq` ()
-  PInt i -> i `seq` ()
-  PFloat d -> d `seq` ()
-  PStr s -> s `seq` ()
-  PBytes b -> b `seq` ()
-  PList items -> foldr (\v acc -> forceValue v `seq` acc) () items
-  PDict members -> foldr (\(k, v) acc -> k `seq` forceValue v `seq` acc) () members
+-- what @sqlite3@ returns for a column (petrus-json's 'PyObject').
+type PV = PyObject
 
 -- | The JSON @json.dumps@ writes for a value (@sort_keys@ when the flag is
 -- set), or its @TypeError@ for the first value it cannot serialize in the
@@ -134,19 +89,22 @@ forceValue = \case
 -- the way out (@when serializing dict item 'key'@, @... list item 3@).
 toJson :: Bool -> PV -> Either PythonException Json
 toJson sorted = \case
-  PNone -> Right Null
-  PBool b -> Right (Bool b)
-  PInt i -> Right (Int i)
-  PFloat d -> Right (Float d)
-  PStr s -> Right (String s)
-  PBytes _ -> Left (typeError "Object of type bytes is not JSON serializable")
-  PList items -> Array <$> traverse (\(i, v) -> noted ("list item " <> T.pack (show i)) (toJson sorted v)) (zip [0 :: Int ..] items)
-  PDict members -> do
+  PyNone -> Right Null
+  PyBool b -> Right (Bool b)
+  PyInt i -> Right (Int i)
+  PyFloat d -> Right (Float d)
+  PyStr s -> Right (String s)
+  PyList items -> sequenceItems "list" items
+  PyTuple items -> sequenceItems "tuple" items
+  PyDict members -> do
     let visited = if sorted then sortOn fst members else members
     converted <- traverse (\(k, v) -> (k,) <$> noted ("dict item " <> strRepr k) (toJson sorted v)) visited
     -- Sorted or not, the members are in the order the encoder writes them.
     Right (Object converted)
+  other -> Left (typeError ("Object of type " <> pyTypeName other <> " is not JSON serializable"))
   where
+    sequenceItems kind items =
+      Array <$> traverse (\(i, v) -> noted (kind <> " item " <> T.pack (show i)) (toJson sorted v)) (zip [0 :: Int ..] items)
     -- CPython 3.14 attaches the place as a note, which the traceback
     -- prints on the lines after @str(error)@; it is carried there.
     noted place = first (\e -> pythonError e.name (pythonExceptionStr e <> "\nwhen serializing " <> place))
@@ -190,80 +148,18 @@ errorLine e
 -- ---------------------------------------------------------------------------
 -- Built-ins
 
--- | @str(value)@.
-pyStr :: PV -> Text
-pyStr = \case
-  PStr s -> s
-  other -> pyRepr other
-
--- | @repr(value)@.
-pyRepr :: PV -> Text
-pyRepr = \case
-  PNone -> "None"
-  PBool True -> "True"
-  PBool False -> "False"
-  PInt i -> T.pack (show i)
-  PFloat d -> pythonDoubleRepr d
-  PStr s -> strRepr s
-  PBytes b -> bytesRepr b
-  PList items -> "[" <> T.intercalate ", " (map pyRepr items) <> "]"
-  PDict members -> "{" <> T.intercalate ", " [strRepr k <> ": " <> pyRepr v | (k, v) <- members] <> "}"
-
--- | CPython's @repr(bytes)@.
-bytesRepr :: ByteString -> Text
-bytesRepr = pythonBytesRepr
-
--- | @bool(value)@.
-truthy :: PV -> Bool
-truthy = \case
-  PNone -> False
-  PBool b -> b
-  PInt i -> i /= 0
-  PFloat d -> d /= 0
-  PStr s -> not (T.null s)
-  PBytes b -> not (BS.null b)
-  PList items -> not (null items)
-  PDict members -> not (null members)
-
--- | @left == right@: numbers compare by value across @bool@, @int@ and
--- @float@; NaN equals nothing.
-pyEq :: PV -> PV -> Bool
-pyEq left right = case (numeric left, numeric right) of
-  (Just a, Just b) -> a `numEq` b
-  (Just _, Nothing) -> False
-  (Nothing, Just _) -> False
-  (Nothing, Nothing) -> case (left, right) of
-    (PNone, PNone) -> True
-    (PStr a, PStr b) -> a == b
-    (PBytes a, PBytes b) -> a == b
-    (PList as, PList bs) -> length as == length bs && and (zipWith pyEq as bs)
-    (PDict as, PDict bs) ->
-      length as == length bs && all (\(k, v) -> maybe False (pyEq v . snd) (find ((== k) . fst) bs)) as
-    _ -> False
-  where
-    numeric = \case
-      PBool b -> Just (Left (if b then 1 else 0))
-      PInt i -> Just (Left i)
-      PFloat d -> Just (Right d)
-      _ -> Nothing
-    numEq (Left a) (Left b) = a == b
-    numEq (Right a) (Right b) = a == b
-    numEq (Left a) (Right b) = intFloatEq a b
-    numEq (Right a) (Left b) = intFloatEq b a
-    intFloatEq i d = not (isNaN d || isInfinite d) && toRational d == fromInteger i
-
 -- | @int(value)@.
 pyInt :: PV -> Either PythonException Integer
 pyInt = \case
-  PBool b -> Right (if b then 1 else 0)
-  PInt i -> Right i
-  PFloat d
+  PyBool b -> Right (if b then 1 else 0)
+  PyInt i -> Right i
+  PyFloat d
     | isNaN d -> Left (valueError "cannot convert float NaN to integer")
     | isInfinite d -> Left (pythonError "OverflowError" "cannot convert float infinity to integer")
     | otherwise -> Right (truncate d)
-  PStr s -> intText s
+  PyStr s -> intText s
   -- @bytes@ strip ASCII whitespace only, and hold ASCII digits only.
-  PBytes b
+  PyBytes b
     | BS.all (< 0x80) b
     , let digits = T.dropAround asciiSpace (TE.decodeLatin1 b)
     , not (T.any Py.isSpace digits)
@@ -273,10 +169,10 @@ pyInt = \case
   other ->
     Left
       ( typeError
-          ("int() argument must be a string, a bytes-like object or a real number, not " <> strRepr (typeName other))
+          ("int() argument must be a string, a bytes-like object or a real number, not " <> strRepr (pyTypeName other))
       )
   where
-    invalidBytes b = valueError ("invalid literal for int() with base 10: " <> bytesRepr b)
+    invalidBytes b = valueError ("invalid literal for int() with base 10: " <> pythonBytesRepr b)
     asciiSpace c = c == ' ' || (c >= '\t' && c <= '\r')
 
 -- | @int(text)@ for a @str@: surrounding whitespace, a sign, Unicode
@@ -292,18 +188,25 @@ pyLower = Py.lower
 
 -- | Refuse an unhashable value as a set element or set probe.
 hashCheck :: PV -> Either PythonException ()
-hashCheck = \case
-  PList _ -> unhashable "list"
-  PDict _ -> unhashable "dict"
-  _ -> Right ()
+hashCheck value = case unhashable value of
+  Nothing -> Right ()
+  Just name -> Left (typeError ("cannot use '" <> pyTypeName value <> "' as a set element (unhashable type: '" <> name <> "')"))
   where
-    unhashable name = Left (typeError ("cannot use '" <> name <> "' as a set element (unhashable type: '" <> name <> "')"))
+    -- The unhashable type @hash()@ meets first: the value's own, or a
+    -- tuple's first unhashable item's.
+    unhashable = \case
+      PyList _ -> Just "list"
+      PyDict _ -> Just "dict"
+      PyTuple items -> case [name | Just name <- map unhashable items] of
+        name : _ -> Just name
+        [] -> Nothing
+      _ -> Nothing
 
 -- | @value.get(key)@ on what must be a dict.
 get :: Text -> PV -> Either PythonException (Maybe PV)
 get key = \case
-  PDict members -> Right (lookup key members)
-  other -> Left (pythonError "AttributeError" ("'" <> typeName other <> "' object has no attribute 'get'"))
+  PyDict members -> Right (lookup key members)
+  other -> Left (pythonError "AttributeError" ("'" <> pyTypeName other <> "' object has no attribute 'get'"))
 
 -- | @key in dict@ / @dict.get(key)@ on a dict's members.
 getKey :: Text -> [(Text, PV)] -> Maybe PV
@@ -319,11 +222,12 @@ contains key members = any ((== key) . fst) members
 -- | @list(value)@: the items a @for@ loop visits.
 iterateValue :: PV -> Either PythonException [PV]
 iterateValue = \case
-  PList items -> Right items
-  PStr s -> Right (map (PStr . T.singleton) (T.unpack s))
-  PBytes b -> Right (map (PInt . fromIntegral) (BS.unpack b))
-  PDict members -> Right (map (PStr . fst) members)
-  other -> Left (typeError ("'" <> typeName other <> "' object is not iterable"))
+  PyList items -> Right items
+  PyTuple items -> Right items
+  PyStr s -> Right (map (PyStr . T.singleton) (T.unpack s))
+  PyBytes b -> Right (map (PyInt . fromIntegral) (BS.unpack b))
+  PyDict members -> Right (map (PyStr . fst) members)
+  other -> Left (typeError ("'" <> pyTypeName other <> "' object is not iterable"))
 
 -- ---------------------------------------------------------------------------
 -- JSON
@@ -337,9 +241,9 @@ loadsText = loaded . loadsUtf8
 -- or the @TypeError@ for anything else.
 loadsValue :: PV -> Either PythonException PV
 loadsValue = \case
-  PStr s -> loaded (Python.loadsText s)
-  PBytes b -> loaded (Python.loadsBytes b)
-  other -> Left (typeError ("the JSON object must be str, bytes or bytearray, not " <> typeName other))
+  PyStr s -> loaded (Python.loadsText s)
+  PyBytes b -> loaded (Python.loadsBytes b)
+  other -> Left (typeError ("the JSON object must be str, bytes or bytearray, not " <> pyTypeName other))
 
 -- | The object, or the exception. A lone surrogate stays in its @str@
 -- (WTF-8, "Petrus.Json.Wtf8"), as in CPython.

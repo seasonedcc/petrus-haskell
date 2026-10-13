@@ -187,6 +187,36 @@ spec = describe "observation through the Engine (test_observation.py)" $ do
       member "tokens" (firstOf (items (members ["current", "marking"] observed)))
         `shouldBeExactly` Array [Object [("color", String "X"), ("data", Null)]]
 
+    -- Beyond upstream (O-006 for the document): the same barrier as above,
+    -- with the reader taking @Engine.net_document()@.
+    it "a document read blocks between a writer's append and projection, then sees the coherent after state (beyond upstream)" $ do
+      history <- newPausingHistory
+      port <- memoryDispatch
+      engine <- Engine.create sourceNet "barrier" history.store port Engine.defaultEngineOptions
+      writeIORef history.pause True
+      errors <- newIORef ([] :: [SomeException])
+      let recordingErrors action = try action >>= either (\e -> modifyIORef' errors (<> [e])) pure
+      joinWriter <- spawn (recordingErrors (void (Engine.deliver engine source [Token (Just "X") Null] "barrier-event" Nothing)))
+      appendedInTime <- timeout 1000000 (readMVar history.appended)
+      appendedInTime `shouldBe` Just ()
+      completed <- newEmptyMVar
+      documents <- newIORef []
+      joinReader <-
+        spawn
+          ( recordingErrors (Observe.netDocument engine >>= \d -> modifyIORef' documents (<> [d]))
+              >> putMVar completed ()
+          )
+      completedEarly <- timeout 20000 (readMVar completed)
+      completedEarly `shouldBe` Nothing
+      putMVar history.resume ()
+      writerDone <- joinWriter
+      readerDone <- joinReader
+      (writerDone, readerDone) `shouldBe` (True, True)
+      readIORef errors >>= \es -> map show es `shouldBe` []
+      observed <- firstOf <$> readIORef documents
+      settled <- Observe.netDocument engine
+      observed `shouldBeExactly` settled
+
     -- test_same_thread_public_reentry_is_refused_but_sensor_status_observation_remains_supported
     it "same-thread public re-entry is refused, but status observation from inside a door remains supported" $ do
       atomic <- canonicalEngine

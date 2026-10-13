@@ -92,6 +92,7 @@ import Petrus.Json qualified as J
 import Petrus.Json.Python (pythonExceptionStr)
 import Petrus.Json.Python qualified as Python
 import Petrus.Posix.Flock qualified as Flock
+import Petrus.Posix.Path (purePathParent)
 import System.Directory (createDirectoryIfMissing, pathIsSymbolicLink)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory)
@@ -463,7 +464,7 @@ newCodexGondolinRuntimeService endpoint ledger token adapter connection attachme
   when (connection.status /= StatusReady) $ throwIO (valueError "service requires one ready connection")
   unless (T.length token >= 32 && T.length token <= 256 && T.all printableAscii token) $
     throwIO (valueError "service token must contain 32..256 printable ASCII characters")
-  when (pathParent endpoint /= pathParent ledger) $
+  when (purePathParent endpoint /= purePathParent ledger) $
     throwIO (valueError "service endpoint and ledger require one state directory")
   stop <- newTVarIO False
   executionLock <- newMVar ()
@@ -478,16 +479,6 @@ newCodexGondolinRuntimeService endpoint ledger token adapter connection attachme
 
 printableAscii :: Char -> Bool
 printableAscii c = c >= ' ' && c <= '~'
-
--- | @Path(value).parent@, lexically.
-pathParent :: FilePath -> FilePath
-pathParent path = case takeDirectory (stripTrailing path) of
-  "" -> "."
-  parent -> parent
-  where
-    stripTrailing p = case reverse p of
-      '/' : rest@(_ : _) -> stripTrailing (reverse rest)
-      _ -> p
 
 acquireFence :: CodexGondolinRuntimeService -> IO ()
 acquireFence s = do
@@ -517,7 +508,7 @@ acquireFence s = do
     mode status = Files.fileMode status `mod` 0o10000
     -- @state.mkdir(parents=True, mode=0o700, exist_ok=True)@.
     makeStateDirectory state = do
-      createDirectoryIfMissing True (pathParent state)
+      createDirectoryIfMissing True (purePathParent state)
       created <- try (PosixDirectory.createDirectory state 0o700)
       case created of
         Right () -> pure ()

@@ -12,6 +12,10 @@ module Petrus.Json.Python.Loads
   ( loadsText
   , loadsUtf8
   , loadsBytes
+
+    -- * Admitting fast, explaining with CPython's scanner
+  , LoadsRefusal (..)
+  , parseOrExplain
   ) where
 
 import Data.ByteString (ByteString)
@@ -19,10 +23,11 @@ import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Json.Parse (parseJson, pythonJsonLoads)
+import Petrus.Json.Parse (ParseOptions, parseJson, pythonJsonLoads)
 import Petrus.Json.Parse.InPlace (parseInPlace)
 import Petrus.Json.Python.Decode (jsonBytesFailure)
 import Petrus.Json.Python.Exception (PythonException, pythonError, unicodeDecodeError)
+import Petrus.Json.Python.Scanner (Raw, ScanError (..))
 import Petrus.Json.Python.Scanner qualified as Scanner
 import Petrus.Json.Value (Json)
 import Petrus.Json.Wtf8 (hasLoneSurrogate)
@@ -54,14 +59,58 @@ unexpectedBom = pythonError "JSONDecodeError" "Unexpected UTF-8 BOM (decode usin
 decodeText :: Text -> Either PythonException Json
 decodeText text = case parseInPlace text of
   Just value -> Right value
-  Nothing -> case parseJson pythonJsonLoads (TE.encodeUtf8 text) of
-    Right value -> Right value
-    Left problem -> case Scanner.decode Scanner.defaultHooks text of
-      Left (Scanner.DecodeError message position) -> Left (pythonError "JSONDecodeError" (Scanner.decodeErrorText text message position))
-      Left (Scanner.HookError message) -> Left (pythonError "ValueError" message)
-      Right raw
-        | hasLoneSurrogate text -> Right (Scanner.rawJson raw)
-        | otherwise -> Left (pythonError "RecursionError" (T.pack problem))
+  Nothing -> loaded (parseOrExplain pythonJsonLoads (Scanner.decode Scanner.defaultHooks) (TE.encodeUtf8 text) text)
+
+-- | The exception @json.loads@ raises for a refusal: a @JSONDecodeError@,
+-- @int()@'s digit-limit @ValueError@, or petrus-json's nesting limit as a
+-- @RecursionError@ (CPython's depends on its C stack; see DIVERGENCES.md).
+loaded :: Either (LoadsRefusal Text) Json -> Either PythonException Json
+loaded = \case
+  Right value -> Right value
+  Left (LoadsDecodeError text) -> Left (pythonError "JSONDecodeError" text)
+  Left (LoadsHookError message) -> Left (pythonError "ValueError" message)
+  Left (LoadsBeyondLimits problem) -> Left (pythonError "RecursionError" problem)
+
+-- | Why a document is refused, as CPython's scanner explains a refusal of
+-- petrus-json's parser ('parseOrExplain').
+data LoadsRefusal e
+  = -- | A @JSONDecodeError@: its @str()@, the message with its line, column
+    -- and character offset.
+    LoadsDecodeError Text
+  | -- | A hook refused a token or an object (@int()@'s digit limit, a
+    -- strict reader's pairs hook).
+    LoadsHookError e
+  | -- | CPython's scanner admits the document; petrus-json's parser refuses
+    -- it past one of its own limits (the nesting depth) or options, with
+    -- petrus-json's message.
+    LoadsBeyondLimits Text
+  deriving stock (Eq, Show)
+
+-- | Admit a document with petrus-json's parser and, only when it refuses,
+-- explain the refusal as CPython does: the readers' one "admit fast,
+-- explain with the scanner" path. The document is given twice, as the
+-- bytes the parser reads and as the @str@ the scan (@Scanner.loads@ or
+-- @Scanner.decode@ with the reader's hooks) reads; the text is only
+-- forced on a refusal.
+--
+-- A lone surrogate the text itself holds (decoded with @surrogatepass@,
+-- which the parser refuses as invalid UTF-8) is admitted from the scan,
+-- once petrus-json's limits admit the same document with U+FFFD (as long
+-- in UTF-8) in its place; an escaped one (@"\\ud800"@) is the parser's to
+-- admit or refuse by its options.
+parseOrExplain :: ParseOptions -> (Text -> Either (ScanError e) Raw) -> ByteString -> Text -> Either (LoadsRefusal e) Json
+parseOrExplain options scan bytes text = case parseJson options bytes of
+  Right value -> Right value
+  Left problem -> case scan text of
+    Left (DecodeError message position) -> Left (LoadsDecodeError (Scanner.decodeErrorText text message position))
+    Left (HookError refusal) -> Left (LoadsHookError refusal)
+    Right raw
+      | hasLoneSurrogate text -> case parseJson options (TE.encodeUtf8 (T.map unpaired text)) of
+          Right _ -> Right (Scanner.rawJson raw)
+          Left problem' -> Left (LoadsBeyondLimits (T.pack problem'))
+      | otherwise -> Left (LoadsBeyondLimits (T.pack problem))
+  where
+    unpaired c = if Scanner.isSurrogate c then '\xFFFD' else c
 
 -- | @json.loads(b)@ for @bytes@: decoded as 'jsonBytesFailure' decodes them
 -- (@json.detect_encoding@, @surrogatepass@), or their @UnicodeDecodeError@,

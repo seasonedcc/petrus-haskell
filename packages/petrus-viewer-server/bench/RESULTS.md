@@ -1094,6 +1094,25 @@ call, and the encoder goes through a `Text` and a `Builder` where the C
 routine sizes the output and writes it in two passes. Each module's
 header points here.
 
+**The relay timing log's write** (2026-10-13, 02:07–02:08 local, load
+average 3.29 → 4.32; `--reps 7 --only relay`). On a file or a terminal
+(the benchmark's `/dev/null` is one), each relay log line was one `write`
+through an `unsafe` foreign import of `Petrus.Viewer.Log`'s own. The clean
+version is petrus-posix's `writeAll`, a `safe` call (`clean`, the main
+build; `unsafe`, the variant). The figures are ops/s of `petrus` with the
+log on, medians of the 7 rounds; "/ Node" is against the best Node server
+of each round, the bare baseline, which logs nothing.
+
+| scenario | clean | unsafe | clean / unsafe | clean / Node | unsafe / Node |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| relay round trip, 1 pair | 13402 | 13611 | 0.98x (2 of 7) | 1.17x | 1.19x |
+| relay round trip, 16 pairs | 59931 | 63844 | 0.94x (2 of 7) | 1.41x | 1.54x |
+
+The safe call costs 2–6% of the logging relay's throughput, and the
+logging relay stays ahead of Node's best in every round (lowest round
+1.16x and 1.35x; against the Vite dev server, which logs like it, 1.35x
+and 1.99x by the median). The unsafe import was removed.
+
 ## Where a request spends its time on Linux
 
 On GitHub's Linux runner the two 1-client endpoint rows sat at parity
@@ -1310,8 +1329,9 @@ runtime would pick, stated as `-A4m` (see "What the Haskell side does").
     16 calls in flight, the server without them answered 0.63x the calls
     (see "Low-level code, measured").
   - `PETRUS_PERF` lines go to standard error like the relay's timing
-    lines: one unsafe `write` to a file or a terminal, a background writer
-    for a pipe.
+    lines: one `write` to a file or a terminal (petrus-posix's `writeAll`,
+    since the measurement in "Low-level code, measured"), a background
+    writer for a pipe.
 - **HTTP handlers.** File reads are unsafe foreign calls shaped like
   `readFileSync`: one call opens the file and learns its size
   (`cbits/file_io.c`), then the file is read up to that size. `resolve-ref`

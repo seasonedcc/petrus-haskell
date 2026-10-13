@@ -1,25 +1,23 @@
 -- | The rest of the CPython the operator calls on its file arguments:
 -- @os.geteuid@, @shutil.which@, and the @pathlib@ and @os.path@ string
--- rules. The descriptor-relative calls themselves (@os.fstat@, @os.stat(name,
--- dir_fd=..., follow_symlinks=False)@, @shutil.rmtree@) are
--- "Petrus.Posix.At"'s.
+-- rules beyond petrus-posix's ("Petrus.Posix.Path" holds @normpath@ and
+-- @PurePosixPath@'s parsing and @.parent@). The descriptor-relative calls
+-- themselves (@os.fstat@, @os.stat(name, dir_fd=...,
+-- follow_symlinks=False)@, @shutil.rmtree@) are "Petrus.Posix.At"'s.
 module Hamsterdan.Operator.Posix
   ( effectiveUid
   , which
 
     -- * Paths
   , isAbsolute
-  , pathParent
   , pathName
-  , normpath
   ) where
 
 import Control.Exception (IOException, try)
 import Data.Int (Int64)
-import Data.List (intercalate)
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
-import Petrus.Posix.Path (confstrPath)
+import Petrus.Posix.Path (confstrPath, pathParts)
 import System.Environment (lookupEnv)
 import System.Posix.Files (fileAccess, getFileStatus)
 import System.Posix.Files qualified as PosixFiles
@@ -76,55 +74,8 @@ isAbsolute = \case
   '/' : _ -> True
   _ -> False
 
--- | @PurePosixPath(path)@: the root (@""@, @"/"@ or @"//"@) and the parts,
--- with empty and @.@ components dropped.
-parts :: FilePath -> (String, [String])
-parts path = (root, filter (`notElem` ["", "."]) (splitSlash rest))
-  where
-    (root, rest) = case path of
-      '/' : '/' : c : more | c /= '/' -> ("//", c : more)
-      '/' : '/' : [] -> ("//", [])
-      '/' : more -> ("/", dropWhile (== '/') more)
-      _ -> ("", path)
-    splitSlash s = case break (== '/') s of
-      (part, []) -> [part]
-      (part, _ : more) -> part : splitSlash more
-
-render :: String -> [String] -> FilePath
-render root components = case (root, components) of
-  ("", []) -> "."
-  _ -> root <> intercalate "/" components
-
--- | @str(Path(path).parent)@.
-pathParent :: FilePath -> FilePath
-pathParent path = let (root, components) = parts path in render root (if null components then [] else init components)
-
 -- | @Path(path).name@.
 pathName :: FilePath -> String
-pathName path = case snd (parts path) of
+pathName path = case snd (pathParts path) of
   [] -> ""
   components -> last components
-
--- | @os.path.normpath(path)@ (POSIX), which @os.path.abspath@ applies to an
--- absolute path.
-normpath :: FilePath -> FilePath
-normpath "" = "."
-normpath path =
-  let initial = case path of
-        '/' : '/' : c : _ | c /= '/' -> "//"
-        "//" -> "//"
-        '/' : _ -> "/"
-        _ -> ""
-      components = foldl step [] (splitSlash path)
-      step acc component
-        | component `elem` ["", "."] = acc
-        | component /= ".." = acc <> [component]
-        | null initial && (null acc || last acc == "..") = acc <> [component]
-        | not (null acc) = init acc
-        | otherwise = acc
-      joined = initial <> intercalate "/" components
-   in if null joined then "." else joined
-  where
-    splitSlash s = case break (== '/') s of
-      (part, []) -> [part]
-      (part, _ : more) -> part : splitSlash more

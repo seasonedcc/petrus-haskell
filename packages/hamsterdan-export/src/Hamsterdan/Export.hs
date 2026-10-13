@@ -31,6 +31,7 @@ module Hamsterdan.Export
   , exportParser
   ) where
 
+import Control.DeepSeq (rnf)
 import Control.Exception (Exception, SomeException, fromException, throwIO, try)
 import Control.Monad (foldM, forM, forM_, unless, when)
 import Data.ByteString qualified as BS
@@ -49,7 +50,6 @@ import Petrus.Argparse qualified as Argparse
 import Hamsterdan.Export.Files
 import Hamsterdan.Export.Parallel (parallelMap, writeFiles)
 import Hamsterdan.Python.Object
-import Hamsterdan.PyLiteral (PyValue (..))
 import Hamsterdan.Python.Hashlib (sha256Hex)
 import Hamsterdan.Python.Text (splitlinesUtf8, strRepr)
 import Hamsterdan.Python.Text qualified as Py
@@ -241,17 +241,17 @@ findInstance stateDir repository pullRequest = do
   paths <- globBindings stateDir (tshow pullRequest)
   matches <- fmap concat . forM paths $ \bindingPath -> do
     binding <- readText bindingPath >>= raiseEither . loadsText
-    stated <- fromMaybe (PStr "") <$> raiseEither (get "repository" binding)
+    stated <- fromMaybe (PyStr "") <$> raiseEither (get "repository" binding)
     statedText <- case stated of
-      PStr s -> pure s
-      other -> raise (pythonError "AttributeError" ("'" <> typeName other <> "' object has no attribute 'lower'"))
+      PyStr s -> pure s
+      other -> raise (pythonError "AttributeError" ("'" <> pyTypeName other <> "' object has no attribute 'lower'"))
     let members = case binding of
-          PDict m -> m
+          PyDict m -> m
           _ -> []
     if pyLower statedText /= pyLower repository
       then pure []
       else do
-        unless (maybe False (pyEq (PInt pullRequest)) (getKey "pull_request" members)) $
+        unless (maybe False (pyEq (PyInt pullRequest)) (getKey "pull_request" members)) $
           refuse ("binding " <> bindingPath <> " disagrees with its own path")
         let directory = pathParent bindingPath
             parts = reverse (T.splitOn "/" directory)
@@ -268,7 +268,7 @@ findInstance stateDir repository pullRequest = do
               , pullRequest
               , instanceId
               , repository = boundRepository
-              , topology = pyStr (fromMaybe (PStr "") (getKey "topology" members))
+              , topology = pyStr (fromMaybe (PyStr "") (getKey "topology" members))
               }
           ]
   case matches of
@@ -295,12 +295,12 @@ readHistory path = do
     Nothing -> pure []
     Just (Left e) | e.name == "JSONDecodeError" -> refuse ("History record " <> tshow seq' <> " is not JSON")
     Just (Left e) -> raise e
-    Just (Right (PDict members)) | contains "record" members -> pure [members]
+    Just (Right (PyDict members)) | contains "record" members -> pure [members]
     Just (Right _) -> refuse ("History record " <> tshow seq' <> " has no record kind")
   where
     parseLine (seq', line) = (seq', if blank line then Nothing else Just (loadsText line))
     forceParsed (_, outcome) = case outcome of
-      Just (Right value) -> forceValue value
+      Just (Right value) -> rnf value
       Just (Left e) -> e `seq` ()
       Nothing -> ()
     -- @not line.strip()@: decided on the bytes unless only non-ASCII
@@ -314,11 +314,11 @@ readHistory path = do
 
 
 recordKind :: Record -> PV
-recordKind record = fromMaybe PNone (getKey "record" record)
+recordKind record = fromMaybe PyNone (getKey "record" record)
 
 isStr :: Text -> PV -> Bool
 isStr expected = \case
-  PStr s -> s == expected
+  PyStr s -> s == expected
   _ -> False
 
 indexLine :: Reporter -> Integer -> Record -> IO Text
@@ -332,17 +332,17 @@ indexLine reporter seq' record = do
   let occurrence = ["occurrence=" <> pyStr value | Just value <- [getKey "occurrence" record]]
       named = [name <> "=" <> pyStr value | name <- fields, Just value <- [getKey name record], not (isNone value)]
       tokens = case getKey "tokens" record of
-        Just (PList items) ->
-          ["tokens=" <> T.intercalate "," [pyStr (fromMaybe PNone (getKey "color" token)) | PDict token <- items]]
+        Just (PyList items) ->
+          ["tokens=" <> T.intercalate "," [pyStr (fromMaybe PyNone (getKey "color" token)) | PyDict token <- items]]
         _ -> []
       result = case getKey "result" record of
-        Just (PDict members) | Just variant <- getKey "$variant" members -> ["result=" <> pyStr variant]
+        Just (PyDict members) | Just variant <- getKey "$variant" members -> ["result=" <> pyStr variant]
         _ -> []
   pure (T.justifyRight 5 ' ' (tshow seq') <> "  " <> T.justifyLeft 30 ' ' kind <> " " <> T.unwords (occurrence ++ named ++ tokens ++ result))
 
 isNone :: PV -> Bool
 isNone = \case
-  PNone -> True
+  PyNone -> True
   _ -> False
 
 historyIndex :: Reporter -> [Record] -> IO Text
@@ -365,7 +365,7 @@ boardDocuments records =
   [ (seq', result)
   | (seq', record) <- zip [1 ..] records
   , isStr "ActivityCompleted" (recordKind record)
-  , Just (PDict result) <- [getKey "result" record]
+  , Just (PyDict result) <- [getKey "result" record]
   , maybe False (isStr "DashLanded") (getKey "$variant" result)
   ]
 
@@ -380,9 +380,9 @@ historyTerminals = foldM step Map.empty
         then pure terminals
         else do
           let variant = case getKey "result" record of
-                Just (PDict result) -> fromMaybe PNone (getKey "$variant" result)
-                _ -> PNone
-              chosen = case filter truthy [variant, fromMaybe PNone (getKey "reason" record)] of
+                Just (PyDict result) -> fromMaybe PyNone (getKey "$variant" result)
+                _ -> PyNone
+              chosen = case filter pyTruthy [variant, fromMaybe PyNone (getKey "reason" record)] of
                 first : _ -> first
                 [] -> kind
           occurrence <- raiseEither (subscript "occurrence" record >>= pyInt)
@@ -399,11 +399,11 @@ historyOperations records inst = do
       | otherwise = do
           let payload = getKey "input" record
               work = case payload of
-                Just (PDict members) -> getKey "work" members
+                Just (PyDict members) -> getKey "work" members
                 _ -> Nothing
               activity = getKey "activity" record
           case work of
-            Just (PDict members)
+            Just (PyDict members)
               | maybe False (isStr "review_agent") activity -> do
                   logical <- pyStr <$> raiseEither (subscript "operation" members)
                   attempt <- raiseEither (subscript "attempt" members >>= pyInt)
@@ -425,7 +425,7 @@ historyOperations records inst = do
                           , kind
                           , origin = "history"
                           , historyOccurrences = maybe [] (.historyOccurrences) seen ++ [occurrence]
-                          , historyInputs = maybe [] (.historyInputs) seen ++ [fromMaybe PNone payload]
+                          , historyInputs = maybe [] (.historyInputs) seen ++ [fromMaybe PyNone payload]
                           }
                   pure (if isJust seen then order else operationId : order, Map.insert operationId operation table)
             _ -> pure acc
@@ -464,7 +464,7 @@ transcriptStem operationId
 -- | How much of one operation survived, and why no more than that.
 sessionCoverage :: Operation -> Maybe Row -> Maybe PV -> Maybe Row -> Map Integer [Text] -> (Text, Text)
 sessionCoverage operation body session piOperation terminals
-  | maybe False truthy session = ("session_exported", "")
+  | maybe False pyTruthy session = ("session_exported", "")
   | isJust body =
       let outcome = pyStr (orEmpty (piGet "outcome"))
        in if outcome /= "cancelled"
@@ -475,9 +475,9 @@ sessionCoverage operation body session piOperation terminals
             else
               ( "body_without_session"
               , "the agent turn was cancelled before any transcript line was appended (termination "
-                  <> pyStr (fromMaybe PNone (piGet "termination_code"))
+                  <> pyStr (fromMaybe PyNone (piGet "termination_code"))
                   <> ", accepted_appends "
-                  <> pyStr (fromMaybe PNone (piGet "accepted_appends"))
+                  <> pyStr (fromMaybe PyNone (piGet "accepted_appends"))
                   <> "; "
                   <> settled
                   <> ")"
@@ -490,8 +490,8 @@ sessionCoverage operation body session piOperation terminals
     settled = if null variants then "no History terminal" else "History terminal " <> T.intercalate "/" variants
     piGet key = piOperation >>= getKey key
     orEmpty = \case
-      Just value | truthy value -> value
-      _ -> PStr ""
+      Just value | pyTruthy value -> value
+      _ -> PyStr ""
 
 -- ---------------------------------------------------------------------------
 -- Writing the package
@@ -502,10 +502,10 @@ writeJsonFile path sorted value = do
   writeBytes path (bytes <> "\n")
 
 pvList :: [Text] -> PV
-pvList = PList . map PStr
+pvList = PyList . map PyStr
 
 pvInts :: [Integer] -> PV
-pvInts = PList . map PInt
+pvInts = PyList . map PyInt
 
 writeTranscripts ::
   Text ->
@@ -526,7 +526,7 @@ writeTranscripts out operations bodies sessions piOperations reviewRequests term
   outcome <- try (foldM (step plan) ([], 0 :: Integer, 0 :: Integer, Map.empty) operations)
   readIORef planned >>= writeFiles . reverse
   (index, joined, sessionBytes, classes) <- either (\(e :: SomeException) -> throwIO e) pure outcome
-  writeJsonFile (joinPath out "index.json") True (PList (reverse index))
+  writeJsonFile (joinPath out "index.json") True (PyList (reverse index))
   let classCount name = Map.findWithDefault 0 name classes
   setNumber reporter "transcripts" $
     Object
@@ -553,75 +553,75 @@ writeTranscripts out operations bodies sessions piOperations reviewRequests term
           (coverage, reason) = sessionCoverage operation body session piOperation terminals
           classes' = Map.insertWith (+) coverage (1 :: Integer) classes
       (sessionName, sessionLength) <- case session of
-        Just value | truthy value -> do
+        Just value | pyTruthy value -> do
           let name = stem <> ".session.jsonl"
           bytes <- case value of
-            PBytes bytes -> pure bytes
-            other -> raise (typeError ("memoryview: a bytes-like object is required, not " <> strRepr (typeName other)))
+            PyBytes bytes -> pure bytes
+            other -> raise (typeError ("memoryview: a bytes-like object is required, not " <> strRepr (pyTypeName other)))
           plan (joinPath out name) bytes
           pure (Just name, toInteger (BS.length bytes))
         _ -> pure (Nothing, 0)
       let request = Map.lookup (operation.logicalOperation, operation.attempt) reviewRequests
       reviewRequest <- case request of
         Just row -> raiseEither (subscript "request_json" row >>= loadsValue)
-        Nothing -> pure PNone
+        Nothing -> pure PyNone
       digest <- case request of
         Just row -> raiseEither (subscript "digest" row)
-        Nothing -> pure PNone
+        Nothing -> pure PyNone
       let bodyMembers = case body of
-            Just row | not (null row) -> [(name, fromMaybe PNone (getKey name row)) | name <- bodyColumns, name /= "operation_id"]
+            Just row | not (null row) -> [(name, fromMaybe PyNone (getKey name row)) | name <- bodyColumns, name /= "operation_id"]
             _ -> []
           document =
-            PDict
-              [ ("operation_id", PStr operation.operationId)
-              , ("logical_operation", PStr operation.logicalOperation)
-              , ("attempt", PInt operation.attempt)
-              , ("kind", PStr operation.kind)
-              , ("origin", PStr operation.origin)
+            PyDict
+              [ ("operation_id", PyStr operation.operationId)
+              , ("logical_operation", PyStr operation.logicalOperation)
+              , ("attempt", PyInt operation.attempt)
+              , ("kind", PyStr operation.kind)
+              , ("origin", PyStr operation.origin)
               , ("history_occurrences", pvInts operation.historyOccurrences)
               ,
                 ( "history_terminals"
                 , pvList [name | occurrence <- operation.historyOccurrences, name <- Map.findWithDefault [] occurrence terminals]
                 )
-              , ("coverage", PStr coverage)
-              , ("coverage_reason", PStr reason)
+              , ("coverage", PyStr coverage)
+              , ("coverage_reason", PyStr reason)
               ,
                 ( "request"
-                , PDict
-                    [ ("history_activity_inputs", PList operation.historyInputs)
+                , PyDict
+                    [ ("history_activity_inputs", PyList operation.historyInputs)
                     , ("review_request", reviewRequest)
                     , ("review_request_digest", digest)
                     ]
                 )
               ,
                 ( "response"
-                , PDict
-                    ( [("body_present", PBool (isJust body))]
+                , PyDict
+                    ( [("body_present", PyBool (isJust body))]
                         ++ bodyMembers
-                        ++ [ ("session_present", PBool (isJust sessionName))
-                           , ("session_jsonl", maybe PNone PStr sessionName)
-                           , ("session_jsonl_bytes", PInt sessionLength)
+                        ++ [ ("session_present", PyBool (isJust sessionName))
+                           , ("session_jsonl", maybe PyNone PyStr sessionName)
+                           , ("session_jsonl_bytes", PyInt sessionLength)
                            ]
                     )
                 )
-              , ("pi_operation", maybe PNone PDict piOperation)
+              , ("pi_operation", maybe PyNone PyDict piOperation)
               ]
       rendered <- raiseEither (dumpsIndentedBytes True document)
       plan (joinPath out (stem <> ".json")) (rendered <> "\n")
       let entry =
-            PDict
-              [ ("operation_id", PStr operation.operationId)
-              , ("logical_operation", PStr operation.logicalOperation)
-              , ("attempt", PInt operation.attempt)
-              , ("kind", PStr operation.kind)
-              , ("origin", PStr operation.origin)
+            PyDict
+              [ ("operation_id", PyStr operation.operationId)
+              , ("logical_operation", PyStr operation.logicalOperation)
+              , ("attempt", PyInt operation.attempt)
+              , ("kind", PyStr operation.kind)
+              , ("origin", PyStr operation.origin)
               , ("history_occurrences", pvInts operation.historyOccurrences)
-              , ("file", PStr (stem <> ".json"))
-              , ("body_present", PBool (isJust body))
-              , ("session_present", PBool (isJust sessionName))
-              , ("session_jsonl", maybe PNone PStr sessionName)
-              , ("coverage", PStr coverage)
-              , ("coverage_reason", PStr reason)
+              , ("file", PyStr (stem <> ".json"))
+              , ("body_present", PyBool (isJust body))
+              , ("session_present", PyBool (isJust sessionName))
+              , ("session_jsonl", maybe PyNone PyStr sessionName)
+              , ("coverage", PyStr coverage)
+              , ("coverage_reason", PyStr reason)
               ]
           named =
             "agent operation "
@@ -718,9 +718,9 @@ writeRawDeliveries out directories rows reporter
             gap
               reporter
               ( "webhook inbox row "
-                  <> pyStr (fromMaybe PNone (getKey "delivery_id" row))
+                  <> pyStr (fromMaybe PyNone (getKey "delivery_id" row))
                   <> " ("
-                  <> pyStr (fromMaybe PNone (getKey "event" row))
+                  <> pyStr (fromMaybe PyNone (getKey "event" row))
                   <> ") has no raw delivery "
                   <> "record in the supplied directories; only its derived observation travels"
               )
@@ -737,45 +737,45 @@ writeRawDeliveries out directories rows reporter
                 copyFile record.path destination
                 payload <- readBytes destination
                 pure
-                  [ PDict
-                      [ ("file", PStr fileName)
-                      , ("delivery_id", PStr record.deliveryId)
-                      , ("label", PStr record.label)
-                      , ("inbox_event", fromMaybe PNone (getKey "event" row))
-                      , ("bytes", PInt (toInteger (BS.length payload)))
-                      , ("sha256", PStr (sha256Hex payload))
-                      , ("source", PStr record.path)
+                  [ PyDict
+                      [ ("file", PyStr fileName)
+                      , ("delivery_id", PyStr record.deliveryId)
+                      , ("label", PyStr record.label)
+                      , ("inbox_event", fromMaybe PyNone (getKey "event" row))
+                      , ("bytes", PyInt (toInteger (BS.length payload)))
+                      , ("sha256", PyStr (sha256Hex payload))
+                      , ("source", PyStr record.path)
                       ]
                   ]
       let admittedIds = map fst admitted
           admittedSet = Set.fromList admittedIds
           outOfScope =
-            [ PDict
-                [ ("file", PStr (pathName record.path))
-                , ("delivery_id", PStr record.deliveryId)
-                , ("label", PStr record.label)
-                , ("source", PStr record.path)
+            [ PyDict
+                [ ("file", PyStr (pathName record.path))
+                , ("delivery_id", PyStr record.deliveryId)
+                , ("label", PyStr record.label)
+                , ("source", PyStr record.path)
                 ]
             | (delivery, records) <- sortOn fst byDelivery
             , not (Set.member delivery admittedSet)
             , record <- records
             ]
-      writeJsonFile (joinPath target "index.json") True (PList copied)
+      writeJsonFile (joinPath target "index.json") True (PyList copied)
       writeJsonFile (joinPath out "out-of-scope-deliveries.json") True $
-        PDict
+        PyDict
           [ ( "note"
-            , PStr
+            , PyStr
                 ( "delivery records found in the supplied directories whose delivery id this "
                     <> "pull request's webhook inbox never admitted; none of them were copied"
                 )
             )
-          , ("count", PInt (toInteger (length outOfScope)))
+          , ("count", PyInt (toInteger (length outOfScope)))
           , ("unrecognized_file_names", pvList (sort unrecognized))
-          , ("files", PList outOfScope)
+          , ("files", PyList outOfScope)
           ]
       forM_ (sort unrecognized) $ \name ->
         gap reporter (name <> " is not named <delivery_id>-<event>.json; it was not classified as a delivery record")
-      let byteCount = sum [n | PDict entry <- copied, Just (PInt n) <- [getKey "bytes" entry]]
+      let byteCount = sum [n | PyDict entry <- copied, Just (PyInt n) <- [getKey "bytes" entry]]
       setNumber reporter "raw_deliveries" $
         Object
           [ ("supplied", Bool True)
@@ -808,7 +808,7 @@ writeWebhooks out stateDir scratch deliveries reporter = do
               observation <- raiseEither (subscript "observation" row >>= loadsValue)
               let row' = [(k, if k == "observation" then observation else v) | (k, v) <- row]
               event <- pyStr <$> raiseEither (subscript "event" row')
-              line <- raiseEither (dumpsLine (PDict row'))
+              line <- raiseEither (dumpsLine (PyDict row'))
               write (line <> "\n")
               pure (row' : done, Map.insertWith (+) event (1 :: Integer) counts)
           )
@@ -841,7 +841,7 @@ writeBoards out records reporter = do
           <> ") \x2014 History seq "
           <> tshow seq'
           <> ", digest `"
-          <> pyStr (fromMaybe (PStr "") (getKey "digest" result))
+          <> pyStr (fromMaybe (PyStr "") (getKey "digest" result))
           <> "`"
       )
   readIORef planned >>= writeFiles . reverse
@@ -883,7 +883,7 @@ writeIdentity out stateDir inst extra reporter = do
   let excluded = excludedExtra ++ [relative | (relative, full) <- found, credentialNamed full]
       copied = sort ("binding.json" : fromState ++ fromExtra)
       excludedNames = Set.toAscList (Set.fromList excluded)
-      listing = PDict [("files", pvList copied), ("excluded_by_name", pvList excludedNames)]
+      listing = PyDict [("files", pvList copied), ("excluded_by_name", pvList excludedNames)]
   writeJsonFile (joinPath out "index.json") False listing
   setNumber reporter "identity" $
     Object [("files", Array (map String copied)), ("excluded_by_name", Array (map String excludedNames))]
@@ -909,14 +909,14 @@ writeHistory out source records reporter = do
   historyIndex reporter records >>= writeText (joinPath out "index.md")
   schemas <- foldM addSchema [] records
   let alone = case schemas of
-        [only] -> pyEq only (PInt historySchema)
+        [only] -> pyEq only (PyInt historySchema)
         _ -> False
       spelled = sort (map pyStr schemas)
   unless alone $
     gap
       reporter
       ( "canonical History carries schema versions "
-          <> Lit.repr (PyList (map PyStr spelled))
+          <> Lit.repr (Lit.PyList (map Lit.PyStr spelled))
           <> ", expected "
           <> tshow historySchema
       )
@@ -931,14 +931,14 @@ writeHistory out source records reporter = do
       ]
   where
     addSchema schemas record = do
-      let schema = fromMaybe PNone (getKey "schema" record)
+      let schema = fromMaybe PyNone (getKey "schema" record)
       raiseEither (hashCheck schema)
       pure (if any (sameMember schema) schemas then schemas else schemas ++ [schema])
     -- A set compares by identity first, and @json.loads@ spells every
     -- @NaN@ as the one @float('nan')@ object, so NaN members collapse.
     sameMember a b = pyEq a b || (isNaNValue a && isNaNValue b)
     isNaNValue = \case
-      PFloat d -> isNaN d
+      PyFloat d -> isNaN d
       _ -> False
 
 agentRoutes :: Text -> Text -> Reporter -> IO [Row]
@@ -1090,17 +1090,7 @@ exportPackage request = do
   pure report
 
 dumpsIndentedJson :: Json -> Either PythonException Text
-dumpsIndentedJson = dumpsIndented True . fromJsonValue
-
-fromJsonValue :: Json -> PV
-fromJsonValue = \case
-  Null -> PNone
-  Bool b -> PBool b
-  Int i -> PInt i
-  Float d -> PFloat d
-  String s -> PStr s
-  Array items -> PList (map fromJsonValue items)
-  Object members -> PDict [(k, fromJsonValue v) | (k, v) <- members]
+dumpsIndentedJson = dumpsIndented True . fromJson
 
 -- ---------------------------------------------------------------------------
 -- README

@@ -7,13 +7,13 @@
 -- digits ('Int' in jiter) from a longer one ('BigInt'). @model_validate@
 -- (the formatter and in-memory sources) validates the Python objects
 -- @json.loads@ builds, where a repeated member has already collapsed to its
--- last value at its first position. 'Value' carries both; 'pyDict' and
--- 'toPython' turn a jiter value into the Python object pydantic hands to
+-- last value at its first position. 'Value' carries both; 'toPython'
+-- (with petrus-json's 'pythonDict') turns a jiter value into the Python
+-- object pydantic hands to
 -- plain validators and @Any@ fields, and 'toPyObject' into petrus-json's
 -- 'PyObject', which error reprs and type names are spelled from.
 module Petrus.EngineFile.Value
   ( Value (..)
-  , pyDict
   , toPython
   , toPyObject
   , pyRepr
@@ -26,9 +26,9 @@ module Petrus.EngineFile.Value
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
 import Data.Map.Strict qualified as Map
-import Data.Set qualified as Set
 import Data.Text (Text)
-import Petrus.Json.Python.Object (PyObject (..))
+import Petrus.Json (pythonDict)
+import Petrus.Json.Python.Object (PyNumber (..), PyObject (..), pyNumberEq)
 import Petrus.Json.Python.Object qualified as Object
 
 -- | A parsed JSON value.
@@ -46,27 +46,11 @@ data Value
   deriving stock (Show, Generic)
   deriving anyclass (NFData)
 
--- | The members of the Python dict built from these pairs: a repeated key
--- keeps its first position and takes its last value.
-pyDict :: [(Text, a)] -> [(Text, a)]
-pyDict members = case members of
-  [] -> members
-  [_] -> members
-  _
-    | Map.size lastValue == length members -> members
-    | otherwise -> go Set.empty members
-  where
-    lastValue = Map.fromList members
-    go _ [] = []
-    go seen ((k, _) : rest)
-      | Set.member k seen = go seen rest
-      | otherwise = (k, lastValue Map.! k) : go (Set.insert k seen) rest
-
 -- | The Python object for a value: dicts deduplicated, recursively.
 toPython :: Value -> Value
 toPython = \case
   VList items -> VList (map toPython items)
-  VDict members -> VDict [(k, toPython v) | (k, v) <- pyDict members]
+  VDict members -> VDict [(k, toPython v) | (k, v) <- pythonDict members]
   v -> v
 
 -- | The Python object for a value, as petrus-json models it.
@@ -78,7 +62,7 @@ toPyObject = \case
   VFloat d -> PyFloat d
   VStr s -> PyStr s
   VList items -> PyList (map toPyObject items)
-  VDict members -> PyDict [(k, toPyObject v) | (k, v) <- pyDict members]
+  VDict members -> PyDict [(k, toPyObject v) | (k, v) <- pythonDict members]
 
 -- | @repr()@ of the Python object.
 pyRepr :: Value -> Text
@@ -114,19 +98,12 @@ pyEqWith nanIdentity a b = case (a, b) of
      in Map.size mx == Map.size my
           && and [maybe False (pyEq' v) (Map.lookup k my) | (k, v) <- Map.toList mx]
   _ -> case (numeric a, numeric b) of
-    (Just x, Just y) -> numEq x y
+    (Just x, Just y) -> pyNumberEq x y
     _ -> False
   where
     pyEq' = pyEqWith nanIdentity
     numeric = \case
-      VBool t -> Just (Left (if t then 1 else 0))
-      VInt i _ -> Just (Left i)
-      VFloat d -> Just (Right d)
+      VBool t -> Just (PyExact (if t then 1 else 0))
+      VInt i _ -> Just (PyExact i)
+      VFloat d -> Just (PyInexact d)
       _ -> Nothing
-    numEq (Left x) (Left y) = x == y
-    numEq (Right x) (Right y) = x == y
-    numEq (Left x) (Right y) = intFloat x y
-    numEq (Right x) (Left y) = intFloat y x
-    intFloat i d
-      | isNaN d || isInfinite d = False
-      | otherwise = toRational d == fromInteger i

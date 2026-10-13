@@ -118,8 +118,10 @@ Where the ledger cites it, its requests include the case named.
 - **S-013** `http` §Simulation. A connection timeout bounds an incomplete
   body without running a simulation or deadlocking close; it is five
   seconds by default. *(`test_simulation_http.py ›
-  test_partial_body_times_out_without_simulation_or_close_deadlock`; the
-  default is a transport bound of the profile fixture, S-002)*
+  test_partial_body_times_out_without_simulation_or_close_deadlock`;
+  `spec/simulation-http-v1.md › bounds a response write to a client that
+  never reads by the five-second connection timeout`; the default is a
+  transport bound of the profile fixture, S-002)*
 - **S-014** `http` §Simulation. Only one simulation runs at a time; an
   overlap is refused without a queue, and the slot is released before the
   response is written. *(`test_simulation_http.py ›
@@ -207,8 +209,4 @@ out. The routes of S-017 are the only ones the service answers.
 
 ## Gaps
 
-- S-013 for response writes: the connection timeout also bounds a response
-  write to a client that never reads. The incomplete-body bound has an
-  example; a write that never completes has none
-  (`test_slot_is_released_before_response_write` holds such a client open
-  but does not wait for the timeout).
+None.

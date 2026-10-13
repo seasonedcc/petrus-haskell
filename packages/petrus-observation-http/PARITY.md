@@ -37,6 +37,8 @@ tests leave implicit:
 
 - a requester that disconnects mid-response does not affect Engine
   execution;
+- a poisoned Engine (a commit that failed) is a 503 `engine_unavailable`
+  on every read door, as a closed one is;
 - an unexpected failure in a read door is a generic 500 without exception
   details;
 - every error has exactly the `{"error":{"code","message"}}` shape, and every

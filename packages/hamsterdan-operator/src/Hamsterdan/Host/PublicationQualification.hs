@@ -56,8 +56,6 @@ module Hamsterdan.Host.PublicationQualification
   , publicationAssertionsAllowed
   , publicationAccepted
   , publicationSanitized
-  , QualificationError (..)
-  , RuntimeError (..)
 
     -- * Helpers
   , trySync
@@ -76,9 +74,11 @@ import Data.Int (Int64)
 import Hamsterdan.Agents.Protocol (AgentCleanupCategory, AgentResultCategory)
 import Hamsterdan.Contracts.Codec (Contract (..), encode)
 import Hamsterdan.Contracts.Readiness (ChangeResult (..), RepairResult (..))
-import Hamsterdan.Python.Object (PV (..))
+import Hamsterdan.Python.Object (PV, PyObject (..))
 import Hamsterdan.Host.GitPublish (GitPublishError (..), PublicationCategory, categoryName)
-import Hamsterdan.Operator.Posix (effectiveUid, pathName, pathParent)
+import Hamsterdan.Host.Python (RuntimeError, ValueError (..))
+import Hamsterdan.Operator.Posix (effectiveUid, pathName)
+import Petrus.Posix.Path (purePathParent)
 import Petrus.Json (Json (..))
 import Petrus.Posix.At (FileStat (..), Follow (..), isDirectory, isRegularFile, isSymbolicLink, permissionBits)
 import Petrus.Posix.At qualified as At
@@ -148,7 +148,7 @@ setupPhaseName = \case
   StaleCas -> "stale_cas"
 
 orEmpty :: (a -> Text) -> Maybe a -> PV
-orEmpty name = PStr . maybe "" name
+orEmpty name = PyStr . maybe "" name
 
 -- ---------------------------------------------------------------------------
 -- Setup evidence
@@ -163,9 +163,9 @@ data SetupPushResult = SetupPushResult
 
 pushSanitized :: SetupPushResult -> PV
 pushSanitized r =
-  PDict
-    [ ("attempted", PBool r.attempted)
-    , ("command_succeeded", PBool r.commandSucceeded)
+  PyDict
+    [ ("attempted", PyBool r.attempted)
+    , ("command_succeeded", PyBool r.commandSucceeded)
     , ("category", orEmpty setupCategoryName r.category)
     ]
 
@@ -177,7 +177,7 @@ data SetupObservationResult = SetupObservationResult
   deriving stock (Eq, Show)
 
 observationSanitized :: SetupObservationResult -> PV
-observationSanitized r = PDict [("confirmed", PBool r.confirmed), ("category", orEmpty setupCategoryName r.category)]
+observationSanitized r = PyDict [("confirmed", PyBool r.confirmed), ("category", orEmpty setupCategoryName r.category)]
 
 -- | Fixed-shape evidence for the bounded qualification-setup sequence.
 data SetupQualificationResult = SetupQualificationResult
@@ -208,12 +208,12 @@ setupAccepted r =
 -- | @SetupQualificationResult.sanitized()@.
 setupSanitized :: SetupQualificationResult -> PV
 setupSanitized r =
-  PDict
-    [ ("accepted", PBool (setupAccepted r))
+  PyDict
+    [ ("accepted", PyBool (setupAccepted r))
     , ("identity", observation r.identity)
     , ("target", observation r.target)
     , ("pre_push", observation r.prePush)
-    , ("push", maybe PNone pushSanitized r.push)
+    , ("push", maybe PyNone pushSanitized r.push)
     , ("readback", observation r.readback)
     , ("pull_request", observation r.pullRequest)
     , ("current_cas", observation r.currentCas)
@@ -223,7 +223,7 @@ setupSanitized r =
     , ("first_cause_category", orEmpty setupCategoryName r.firstCauseCategory)
     ]
   where
-    observation = maybe PNone observationSanitized
+    observation = maybe PyNone observationSanitized
 
 -- ---------------------------------------------------------------------------
 -- The setup sequence
@@ -470,7 +470,7 @@ spend subject
                           else Nothing
   where
     fs = subject.fs
-    parent = pathParent subject.spentPath
+    parent = purePathParent subject.spentPath
     name = pathName subject.spentPath
 
 -- | @_valid_setup_marker(parent_descriptor, name)@.
@@ -524,20 +524,6 @@ setupCommand remote base head' = do
 
 -- ---------------------------------------------------------------------------
 -- Publication evidence
-
--- | A publication-category failure of the qualification itself: Python's
--- @ValueError@ or @TypeError@, with its message.
-data QualificationError = QualificationError {cls :: Text, message :: Text}
-  deriving stock (Eq, Show)
-
-instance Exception QualificationError
-
--- | The Haskell spelling of a Python @RuntimeError@ raised by a replay
--- callback (other than 'GitPublishError', which carries its category).
-newtype RuntimeError = RuntimeError Text
-  deriving stock (Eq, Show)
-
-instance Exception RuntimeError
 
 -- | What a replay's first cause can be.
 data ReplayCategory
@@ -609,8 +595,9 @@ instance PublicationEffect ChangeResult where
 instance PublicationEffect RepairResult where
   originalEvidence r = OriginalEvidence r.ok r.publicationCategory r.agentResultCategory r.agentCleanupCategory
 
+-- | A failure of the qualification itself: the reference's @ValueError@.
 valueError :: Text -> IO a
-valueError = throwIO . QualificationError "ValueError"
+valueError = throwIO . ValueError
 
 -- | @_category(value, vocabulary, name)@.
 closedCategory :: (Bounded c, Enum c) => (c -> Text) -> Text -> Text -> IO (Maybe c)
@@ -702,17 +689,17 @@ publicationAccepted s =
 -- text.
 publicationSanitized :: PublicationState -> PV
 publicationSanitized s =
-  PDict
-    [ ("accepted", PBool (publicationAccepted s))
-    , ("original_publications", maybe PNone (PInt . fromIntegral) s.originalPublications)
+  PyDict
+    [ ("accepted", PyBool (publicationAccepted s))
+    , ("original_publications", maybe PyNone (PyInt . fromIntegral) s.originalPublications)
     , ("agent_result_category", orEmpty contractName s.agentResultCategory)
     , ("agent_cleanup_category", orEmpty contractName s.agentCleanupCategory)
     , ("original_category", orEmpty categoryName s.originalCategory)
-    , ("publication_assertions_allowed", PBool (publicationAssertionsAllowed s))
-    , ("schema_assertion", maybe PNone PBool s.schemaAssertion)
-    , ("tree_assertion", maybe PNone PBool s.treeAssertion)
-    , ("replay_assertion", maybe PNone PBool s.replayAssertion)
+    , ("publication_assertions_allowed", PyBool (publicationAssertionsAllowed s))
+    , ("schema_assertion", maybe PyNone PyBool s.schemaAssertion)
+    , ("tree_assertion", maybe PyNone PyBool s.treeAssertion)
+    , ("replay_assertion", maybe PyNone PyBool s.replayAssertion)
     , ("replay_category", orEmpty replayCategoryName s.replayCategory)
-    , ("cleanup_verified", maybe PNone PBool s.cleanupVerified)
+    , ("cleanup_verified", maybe PyNone PyBool s.cleanupVerified)
     , ("cleanup_category", orEmpty qualificationCategoryName s.cleanupCategory)
     ]

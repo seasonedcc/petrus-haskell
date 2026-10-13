@@ -121,6 +121,47 @@ Three rounds, alternating which harness goes first; each figure is the median of
 `archive/one-large/extract` (one 256 MiB file) read 1.19× here, Haskell
 ahead in 2 of 3 rounds.
 
+### 2026-10-13: extraction writes, petrus-posix's safe write against the unsafe loop (A/B)
+
+<!-- bench: superseded -->
+
+An A/B record, not a headline result (the marker keeps its rows out of the
+summary). Extraction used to write each file in 64 KiB `write(2)` calls made
+through an `unsafe` foreign import of its own, said to save "~10%" of a 256
+MiB extraction. It now calls petrus-posix's `writeAll` (one `safe` `write(2)`
+per call over the whole buffer, looping on short writes), and `os.link` is
+petrus-posix's `linkAt`. Both builds were the same source but for the write
+(`clean` is the committed code; `unsafe` restored the old loop), measured on
+2026-10-13 on the Apple M4 with Python's harness in the same rounds, each
+round rotating which of the three runs first.
+
+Seven rounds of every archive workload, 01:58–02:04 local (UTC-3), 1-minute
+load average 1.99 → 2.96:
+
+| benchmark | Python (ms) | clean (ms) | unsafe (ms) | Python / clean | Python / unsafe | clean ahead of unsafe |
+|---|---:|---:|---:|---:|---:|---:|
+| archive/many-small/extract | 1132.793 | 871.483 | 894.703 | 1.30x | 1.27x | 6 of 7 |
+| archive/medium/extract | 174.161 | 143.073 | 125.431 | 1.22x | 1.39x | 3 of 7 |
+| archive/one-large/extract | 266.406 | 116.861 | 145.897 | 2.28x | 1.83x | 4 of 7 |
+
+The pack and validate rows do not write; they moved by noise (0.95–1.05
+between the builds by the median of the rounds).
+
+`archive/medium/extract` is the row `scripts/bench-gate` checks, so it got
+twelve more rounds of its own (`PETRUS_BENCH_ONLY=medium`, 02:05–02:06,
+load average 3.26):
+
+| benchmark | Python (ms) | clean (ms) | unsafe (ms) | Python / clean | Python / unsafe | clean ahead of unsafe |
+|---|---:|---:|---:|---:|---:|---:|
+| archive/medium/extract | 149.555 | 133.654 | 130.241 | 1.12x | 1.15x | 5 of 12 |
+
+Clean was ahead of Python in 9 of the 12 rounds (median of the per-round
+ratios 1.11, lowest 0.90), unsafe in 10 (1.22, lowest 0.75). The two builds
+are within each other's noise on every extract row (clean's time over
+unsafe's, by the median of the rounds: 0.98 many-small, 1.19 and 1.06
+medium, 0.82 one-large), and the safe write keeps extraction ahead of
+Python on all three, so the unsafe loop was removed.
+
 ### 2026-10-12, at `d85b420`: the other rows (superseded)
 
 <!-- bench: superseded -->
@@ -278,9 +319,9 @@ measurably slower.
 - **Archive codec.** Haskell is faster on every pack and validate. The output bytes are identical
   to Python's, as the differential fixtures prove. Validating the single 256 MiB member is a
   header walk.
-- **Extraction** is dominated by file creation and the kernel write path. It writes in 64 KiB
-  chunks, which measured fastest for this filesystem: a raw Python `os.write` loop over 256 MiB
-  took a median of about 68 ms with 64 KiB chunks, against 82 ms at 1 MiB and 100 ms at 16 KiB.
+- **Extraction** is dominated by file creation and the kernel write path. Each member's data
+  goes to petrus-posix's `writeAll`, one `safe` `write(2)` over the whole buffer (looping on
+  short writes); the unsafe 64 KiB loop it replaced measured no faster (the A/B above).
   `one-large/extract` is the most I/O-bound and noisiest row. Across other runs it ranged from
   0.90x to 1.14x. A dedicated 10-round interleaved run of that row alone gave medians of 74.4 ms
   for Python and 70.8 ms for Haskell.

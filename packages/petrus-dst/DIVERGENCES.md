@@ -161,8 +161,8 @@ port admits them in string values too: petrus-json keeps such a string as WTF-8,
 the validators and the canonical encoder agree with the reference on it byte for byte (the
 raw-bytes corpus and `Spec.ToolingInterop` exchange such an artifact both ways). A lone surrogate
 in an object key is refused with `invalid strict DST JSON: the payload contains a lone UTF-16
-surrogate in an object key, which this port cannot represent`. The raw-bytes corpus pins that
-case. No committed fixture contains one.
+surrogate in an object key, which the reference's pydantic re-encoding rewrites`. The raw-bytes
+corpus pins that case. No committed fixture contains one.
 
 Why it stays: the reference re-encodes an artifact through pydantic-core's
 `model_dump(mode="json")`, which treats keys differently from values: a `JsonValue` object key

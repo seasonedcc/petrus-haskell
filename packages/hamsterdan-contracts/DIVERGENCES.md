@@ -56,9 +56,19 @@ digest is checked byte for byte against the pinned Python (see
    addition for fixtures and tooling. They use the same strict rules as the
    pydantic contracts, with the dataclass defaults for omitted fields.
 
+7. **The exporter's and the operator's Python values are petrus-json's.**
+   `Hamsterdan.Python.Object.PV` is a synonym for petrus-json's `PyObject`
+   (the model petrus-impetus reads with too), so its constructors are
+   `PyNone`, `PyStr`, `PyBytes` and so on, and `pyStr`, `pyRepr`,
+   `pyTruthy`, `pyEq` and `fromJson` are petrus-json's. The numeric
+   equality under `pyEq` (an `int` equals a `float` exactly when the float
+   is that integer) is petrus-json's `pyNumberEq`, which `PyLiteral`'s
+   `pyEq` shares. Nothing observable changed: the exporter's and the
+   operator's golden and interop suites are unchanged.
+
 ## Errors
 
-7. **Decode errors report the first failure.**
+8. **Decode errors report the first failure.**
    - pydantic collects every error. `DecodeError` names one path and reason:
      an unknown member first, then fields in declaration order.
    - Only whether an input is admitted is compared with Python (thousands of
@@ -72,14 +82,14 @@ digest is checked byte for byte against the pinned Python (see
      every error would mean reproducing pydantic-core's report format
      (truncated `input_value` reprs, `errors.pydantic.dev` links) for no
      reader.
-8. **`literalEval` collapses `SyntaxError` and `ValueError` into
+9. **`literalEval` collapses `SyntaxError` and `ValueError` into
    `Malformed`.** `board.py` catches both the same way (it skips the entry).
    `TypeError` from an unhashable dict key stays separate as `Unhashable`,
    because it propagates in Python.
 
 ## Unmodeled Python values
 
-9. **`Unsupported` literals.**
+10. **`Unsupported` literals.**
    - CPython's `literal_eval` also returns bytes, complex numbers, sets and
      `Ellipsis`.
    - Strings with lone surrogates are no longer among them (resolved). An
@@ -94,21 +104,21 @@ digest is checked byte for byte against the pinned Python (see
    - CPython validates its sub-expressions in a particular order: a set
      containing an unhashable value raises `TypeError`, and a malformed element
      inside a set is still `Malformed`. The parser keeps that order.
-10. **`\N{name}` escapes are `Unsupported`.**
+11. **`\N{name}` escapes are `Unsupported`.**
     - Resolving them needs the Unicode name database, which would add a large
       table for a form Hamsterdan never prints (`repr` never emits `\N`).
     - A well-formed `\N{...}` is reported `Unsupported`; a malformed one is
       `Malformed`, as in CPython.
     - The corpus contains such sources. The suite accepts `Unsupported` for
       them and checks every other source exactly.
-11. **An unhashable `disposition` is "not open".**
+12. **An unhashable `disposition` is "not open".**
     - In `workflow_gates_ready`, Python evaluates
       `finding.get("disposition") in {"new", "still_open"}`, which raises
       `TypeError` when a blocking finding's disposition is a list or dict.
     - `workflowGatesReady` treats such a finding as not open and stays total.
     - No contract produces such a finding: dispositions are written by
       Hamsterdan as strings.
-12. **JSON bodies print as JSON values.**
+13. **JSON bodies print as JSON values.**
     - `dictEntry` and `sortedItemsDigest` take the body as `Json`, which is how
       bodies travel through History.
     - A body that held a Python tuple in memory would print `(...)` in Python.
@@ -117,7 +127,7 @@ digest is checked byte for byte against the pinned Python (see
 
 ## Toolchain
 
-13. **The corpora come from Python 3.14.6.**
+14. **The corpora come from Python 3.14.6.**
     - Hamsterdan's container pins Python 3.14.7. The `uv` environment on the
       corpus machine resolved 3.14.6, the newest 3.14 available there.
     - Nothing used differs between the two patch releases: `repr`,

@@ -103,7 +103,7 @@ import Data.Time.Format (defaultTimeLocale, formatTime)
 import Petrus.Argparse (Arg, ArgumentParser (..), Outcome (..), formattingFor, parse, pathText)
 import Petrus.Argparse qualified as Argparse
 import Hamsterdan.Python.Object
-  ( PV (..)
+  ( PV, PyObject (..)
   , PythonException (..)
   , errorLine
   , hashCheck
@@ -113,19 +113,21 @@ import Hamsterdan.Python.Object
   , pyInt
   , pyStr
   , raiseEither
-  , truthy
+  , pyTruthy
   )
 import Hamsterdan.Python.Object qualified as PyV
 import Hamsterdan.Python.Hashlib (sha256HexText)
 import Hamsterdan.Python.Text (splitlines, utf8Encode)
 import Hamsterdan.Host.PublicationQualification
-import Hamsterdan.Operator.Posix (effectiveUid, normpath, pathParent)
+import Hamsterdan.Operator.Posix (effectiveUid)
 import Hamsterdan.Operator.Posix qualified as Posix
 import Hamsterdan.Operator.Python
 import Petrus.Json.Python (fsEncode, pythonStrListRepr, utf8BackslashReplace)
 import Petrus.Json.Wtf8 (fromCodePoints)
 import Petrus.Posix.At (FileStat (..), Follow (..), isDirectory, isRegularFile, permissionBits)
 import Petrus.Posix.At qualified as At
+import Petrus.Posix.Path (normpath, purePathParent)
+import Petrus.Posix.Process (exitInt)
 import Hamsterdan.Python.Exception (ioException, pythonError)
 import System.Directory (canonicalizePath, doesFileExist, getTemporaryDirectory)
 import System.Environment (getEnvironment)
@@ -333,11 +335,6 @@ execStrings executable arguments = (,) <$> execString executable <*> mapM execSt
 execString :: Text -> IO String
 execString text = either throwIO (const (pure (T.unpack text))) (fsEncode text)
 
-exitInt :: ExitCode -> Int
-exitInt = \case
-  ExitSuccess -> 0
-  ExitFailure n -> n
-
 -- | What the reference's module-level hooks and globals provide, so tests
 -- can replace them as the reference's tests monkeypatch them.
 data Operator = Operator
@@ -394,7 +391,7 @@ run op command cwd = do
 jsonOf :: Operator -> [Text] -> Maybe FilePath -> IO PV
 jsonOf op command cwd = do
   out <- run op command cwd
-  case loadsJson (PStr (if T.null out then "null" else out)) of
+  case loadsJson (PyStr (if T.null out then "null" else out)) of
     Loaded value -> pure value
     Malformed -> operatorError ("malformed JSON from " <> fromMaybe "" (listToMaybe command))
     Raised e -> throwIO e
@@ -588,7 +585,7 @@ qualificationSetup runner credentialFile targetFile spentPath = do
                 }
         pure (evidence False result)
       evidence accepted result =
-        PDict [("command", PStr "qualification-setup"), ("ok", PBool accepted), ("evidence", setupSanitized result)]
+        PyDict [("command", PyStr "qualification-setup"), ("ok", PyBool accepted), ("evidence", setupSanitized result)]
       body = do
         let rawPaths = [credentialFile, targetFile, spentPath]
         if not (all Posix.isAbsolute rawPaths)
@@ -606,7 +603,7 @@ qualificationSetup runner credentialFile targetFile spentPath = do
                     (Just gitPath, Just ghPath) -> do
                       gitExecutable <- T.pack <$> canonicalizePath gitPath
                       ghExecutable <- T.pack <$> canonicalizePath ghPath
-                      let markerParent = pathParent marker
+                      let markerParent = purePathParent marker
                       parent <- At.statAt Nothing markerParent NoFollowLinks
                       resolved <- canonicalizePath markerParent
                       euid <- effectiveUid
@@ -627,12 +624,12 @@ qualificationSetup runner credentialFile targetFile spentPath = do
             let token = TE.decodeLatin1 credential
             if T.null token || pyStrip token /= token || T.any pyIsSpace token
               then preparationFailure
-              else case loadsJson (PBytes targetInput) of
-                Loaded (PDict members)
+              else case loadsJson (PyBytes targetInput) of
+                Loaded (PyDict members)
                   | Set.fromList (map fst members) == Set.fromList ["repository", "account_id", "repository_id"]
-                  , Just (PStr targetName) <- lookup "repository" members
-                  , Just (PInt accountId) <- lookup "account_id" members
-                  , Just (PInt targetRepositoryId) <- lookup "repository_id" members
+                  , Just (PyStr targetName) <- lookup "repository" members
+                  , Just (PyInt accountId) <- lookup "account_id" members
+                  , Just (PyInt targetRepositoryId) <- lookup "repository_id" members
                   , validTarget targetName ->
                       let (owner, rest) = T.breakOn "/" targetName
                           repositoryName = T.drop 1 rest
@@ -738,31 +735,31 @@ qualificationSetup runner credentialFile targetFile spentPath = do
                             ghJson endpoint = do
                               result <- rawRun [ghExecutable, "api", endpoint] root environment
                               when (result.returncode /= 0) $ throwIO (pythonError "RuntimeError" "")
-                              case loadsJson (PBytes result.stdout) of
+                              case loadsJson (PyBytes result.stdout) of
                                 Loaded value -> pure value
                                 Malformed -> throwIO (pythonError "JSONDecodeError" "")
                                 Raised e -> throwIO e
                             identityCheck = do
                               value <- ghJson "/user"
                               pure case value of
-                                PDict members -> pyEq (fromMaybe PNone (lookup "id" members)) (PInt accountId)
+                                PyDict members -> pyEq (fromMaybe PyNone (lookup "id" members)) (PyInt accountId)
                                 _ -> False
                             targetReady = do
                               value <- ghJson ("/repos/" <> owner <> "/" <> repositoryName)
                               pure case value of
-                                PDict members ->
-                                  let member name = fromMaybe PNone (lookup name members)
-                                      isFalse = \case PBool False -> True; _ -> False
-                                   in pyEq (member "full_name") (PStr targetName)
-                                        && pyEq (member "id") (PInt targetRepositoryId)
+                                PyDict members ->
+                                  let member name = fromMaybe PyNone (lookup name members)
+                                      isFalse = \case PyBool False -> True; _ -> False
+                                   in pyEq (member "full_name") (PyStr targetName)
+                                        && pyEq (member "id") (PyInt targetRepositoryId)
                                         && isFalse (member "private")
                                         && isFalse (member "archived")
                                         && isFalse (member "disabled")
-                                        && pyEq (member "size") (PInt 0)
-                                        && pyEq (member "default_branch") (PStr "main")
+                                        && pyEq (member "size") (PyInt 0)
+                                        && pyEq (member "default_branch") (PyStr "main")
                                         && case member "permissions" of
-                                          PDict permissions -> case lookup "push" permissions of
-                                            Just (PBool True) -> True
+                                          PyDict permissions -> case lookup "push" permissions of
+                                            Just (PyBool True) -> True
                                             _ -> False
                                           _ -> False
                                 _ -> False
@@ -835,13 +832,13 @@ brokerSourceDigest source =
 
 -- | @_check(name, passed, observed)@.
 check :: Text -> Bool -> PV -> PV
-check name verdict observed = PDict [("name", PStr name), ("pass", PBool verdict), ("observed", observed)]
+check name verdict observed = PyDict [("name", PyStr name), ("pass", PyBool verdict), ("observed", observed)]
 
 -- | @preflight(runner, health_url=...)@.
 preflight :: Operator -> Maybe Text -> IO PV
 preflight op healthUrl = do
   auth <- op.runner ["gh", "auth", "status"] Nothing
-  let authCheck = check "gh_auth" (auth.returncode == 0) (PStr (if auth.returncode == 0 then "authenticated" else "unavailable"))
+  let authCheck = check "gh_auth" (auth.returncode == 0) (PyStr (if auth.returncode == 0 then "authenticated" else "unavailable"))
   inventory <- try do
     org <- api op ("/orgs/" <> op.fixture.organization)
     repo <- api op ("/repos/" <> op.fixture.repository)
@@ -867,28 +864,28 @@ preflight op healthUrl = do
         else pure Nothing
     let brokerState = brokerStatus op broker validator
     names <- py do
-      listed <- getOr "workflows" (PList []) workflowList
+      listed <- getOr "workflows" (PyList []) workflowList
       items <- iterateValue listed
       found <- forM [item | item <- items, isDict item] (getMaybe "name")
       mapM_ hashCheck found
       pure found
-    let strings = Set.fromList [s | PStr s <- names]
+    let strings = Set.fromList [s | PyStr s <- names]
     orgIdValue <- py (getMaybe "id" org)
     repoIdValue <- py (getMaybe "id" repo)
     private <- py (getMaybe "private" repo)
-    privateDefaulted <- py (getOr "private" (PBool True) repo)
+    privateDefaulted <- py (getOr "private" (PyBool True) repo)
     branch <- py (getMaybe "default_branch" repo)
     pure
-      [ check "organization_identity" (pyEq orgIdValue (PInt op.fixture.orgId)) orgIdValue
-      , check "repository_identity" (pyEq repoIdValue (PInt op.fixture.repositoryId)) repoIdValue
-      , check "repository_public" (case private of PBool False -> True; _ -> False) (PBool (not (truthy privateDefaulted)))
-      , check "default_branch" (pyEq branch (PStr defaultBranch)) branch
-      , check "required_workflows" (all (`Set.member` strings) workflows) (PList (map PStr (Set.toAscList strings)))
-      , check "default_broker" (brokerState `elem` ["legacy", "hamsterdan"]) (PStr brokerState)
+      [ check "organization_identity" (pyEq orgIdValue (PyInt op.fixture.orgId)) orgIdValue
+      , check "repository_identity" (pyEq repoIdValue (PyInt op.fixture.repositoryId)) repoIdValue
+      , check "repository_public" (case private of PyBool False -> True; _ -> False) (PyBool (not (pyTruthy privateDefaulted)))
+      , check "default_branch" (pyEq branch (PyStr defaultBranch)) branch
+      , check "required_workflows" (all (`Set.member` strings) workflows) (PyList (map PyStr (Set.toAscList strings)))
+      , check "default_broker" (brokerState `elem` ["legacy", "hamsterdan"]) (PyStr brokerState)
       ]
   let inventoryChecks = case inventory of
         Right found -> found
-        Left (OperatorError message) -> [check "provider_inventory" False (PStr message)]
+        Left (OperatorError message) -> [check "provider_inventory" False (PyStr message)]
   health <- case healthUrl of
     Just url | not (T.null url) -> do
       let endpoint = T.dropWhileEnd (== '/') url <> "/healthz"
@@ -896,18 +893,18 @@ preflight op healthUrl = do
       healthy <-
         if result.returncode /= 0
           then pure False
-          else case loadsJson (PStr result.stdout) of
+          else case loadsJson (PyStr result.stdout) of
             Loaded value -> pure (isDict value)
             Malformed -> pure False
             Raised e -> throwIO e
-      pure [check "app_host_health" healthy (PStr (if healthy then "healthy" else "unavailable"))]
+      pure [check "app_host_health" healthy (PyStr (if healthy then "healthy" else "unavailable"))]
     _ -> pure []
   let checks = authCheck : inventoryChecks <> health
-  pure (PDict [("command", PStr "preflight"), ("ok", PBool (all passed checks)), ("checks", PList checks)])
+  pure (PyDict [("command", PyStr "preflight"), ("ok", PyBool (all passed checks)), ("checks", PyList checks)])
 
 passed :: PV -> Bool
 passed = \case
-  PDict members -> maybe False truthy (lookup "pass" members)
+  PyDict members -> maybe False pyTruthy (lookup "pass" members)
   _ -> False
 
 -- | @scenario_value(scenario)@.
@@ -915,17 +912,17 @@ scenarioValue :: Text -> Either OperatorError PV
 scenarioValue scenario = do
   behavior <-
     if scenario == "first-attempt-flake"
-      then Right (PDict [("kind", PStr "first_attempt_flake"), ("fingerprint", PStr "scenario:first-attempt-flake:v1")])
+      then Right (PyDict [("kind", PyStr "first_attempt_flake"), ("fingerprint", PyStr "scenario:first-attempt-flake:v1")])
       else
         if scenario `elem` ["clean-green", "hero-review"]
-          then Right (PDict [("kind", PStr "pass")])
+          then Right (PyDict [("kind", PyStr "pass")])
           else Left (OperatorError "unsupported scenario")
   pure
-    ( PDict
-        [ ("schema_version", PInt 1)
-        , ("scenario", PStr scenario)
+    ( PyDict
+        [ ("schema_version", PyInt 1)
+        , ("scenario", PyStr scenario)
         , ("behavior", behavior)
-        , ("review_lenses", PList (map PStr ["correctness", "test-quality", "risk"]))
+        , ("review_lenses", PyList (map PyStr ["correctness", "test-quality", "risk"]))
         ]
     )
 
@@ -955,13 +952,13 @@ create op scenario = do
     let inCheckout command = run op command (Just checkout)
     void (inCheckout ["git", "switch", "--create", branch, "origin/main"])
     prepared <- jsonOf op ["python", "tools/scenario_control.py", "prepare", scenario] (Just checkout)
-    admitted <- if isDict prepared then py (getMaybe "admitted_changed_paths" prepared) else pure PNone
+    admitted <- if isDict prepared then py (getMaybe "admitted_changed_paths" prepared) else pure PyNone
     admittedPaths <- case admitted of
-      PList items
+      PyList items
         | not (null items)
-        , all (\case PStr s -> not (T.null s); _ -> False) items
-        , any (pyEq (PStr scenarioPath)) items ->
-            pure (Set.fromList [s | PStr s <- items])
+        , all (\case PyStr s -> not (T.null s); _ -> False) items
+        , any (pyEq (PyStr scenarioPath)) items ->
+            pure (Set.fromList [s | PyStr s <- items])
       _ -> operatorError "scenario preparation returned malformed admitted paths"
     void (inCheckout ["python", "tools/scenario_control.py", "--attempt", "2"])
     modified <- splitlines <$> inCheckout ["git", "diff", "--name-only"]
@@ -1009,14 +1006,14 @@ create op scenario = do
   number <- py (subscriptKey "number" pr)
   url <- py (subscriptKey "url" pr)
   pure
-    ( PDict
-        [ ("command", PStr "create")
-        , ("ok", PBool True)
+    ( PyDict
+        [ ("command", PyStr "create")
+        , ("ok", PyBool True)
         , ("number", number)
         , ("url", url)
-        , ("head", PStr head')
-        , ("branch", PStr branch)
-        , ("requested_reviewer", if scenario == "hero-review" then PStr op.fixture.heroReviewer else PNone)
+        , ("head", PyStr head')
+        , ("branch", PyStr branch)
+        , ("requested_reviewer", if scenario == "hero-review" then PyStr op.fixture.heroReviewer else PyNone)
         ]
     )
 
@@ -1059,7 +1056,7 @@ prepareBroker op = do
   items <- py (iterateValue prepared)
   matching <-
     fmap concat . forM items $ \item -> do
-      ref <- py (getOr "headRefName" (PStr "") item)
+      ref <- py (getOr "headRefName" (PyStr "") item)
       pure [item | "hamsterdan/broker-cutover-" `T.isPrefixOf` pyStr ref]
   case matching of
     item : _ -> do
@@ -1067,11 +1064,11 @@ prepareBroker op = do
       url <- py (subscriptKey "url" item)
       branch <- py (subscriptKey "headRefName" item)
       pure
-        ( PDict
-            [ ("command", PStr "prepare-broker")
-            , ("ok", PBool True)
-            , ("status", PStr "prepared")
-            , ("changed", PBool False)
+        ( PyDict
+            [ ("command", PyStr "prepare-broker")
+            , ("ok", PyBool True)
+            , ("status", PyStr "prepared")
+            , ("changed", PyBool False)
             , ("number", number)
             , ("url", url)
             , ("branch", branch)
@@ -1126,19 +1123,19 @@ prepareBroker op = do
               )
             Just <$> jsonOf op ["gh", "pr", "view", branch, "--repo", op.fixture.repository, "--json", "number,url,headRefName"] (Just checkout)
       case outcome of
-        Nothing -> pure (PDict [("command", PStr "prepare-broker"), ("ok", PBool True), ("status", PStr "current"), ("changed", PBool False)])
+        Nothing -> pure (PyDict [("command", PyStr "prepare-broker"), ("ok", PyBool True), ("status", PyStr "current"), ("changed", PyBool False)])
         Just pr -> do
           number <- py (subscriptKey "number" pr)
           url <- py (subscriptKey "url" pr)
           pure
-            ( PDict
-                [ ("command", PStr "prepare-broker")
-                , ("ok", PBool True)
-                , ("status", PStr "prepared")
-                , ("changed", PBool True)
+            ( PyDict
+                [ ("command", PyStr "prepare-broker")
+                , ("ok", PyBool True)
+                , ("status", PyStr "prepared")
+                , ("changed", PyBool True)
                 , ("number", number)
                 , ("url", url)
-                , ("branch", PStr branch)
+                , ("branch", PyStr branch)
                 ]
             )
 
@@ -1251,20 +1248,20 @@ hasFindingsDigest body = any (digestLine . snd) (linesWithOffsets body)
 -- markers.
 safeComment :: PV -> Text -> Bool -> IO (Maybe PV, [PV])
 safeComment comment botLogin inline = do
-  body <- pyStr <$> py (getOr "body" (PStr "") comment)
-  owner <- pyStr <$> py (getOr "user" (PDict []) comment >>= getOr "login" (PStr ""))
+  body <- pyStr <$> py (getOr "body" (PyStr "") comment)
+  owner <- pyStr <$> py (getOr "user" (PyDict []) comment >>= getOr "login" (PyStr ""))
   url <- py (getMaybe "html_url" comment)
   identifier <- py (getMaybe "id" comment)
   let dashboard = "<!-- hamsterdan:dashboard -->" `T.isSuffixOf` body
       immutable = suffixMatch immutableGrammar body
       immutableMarkers =
-        [ PDict
-            [ ("type", PStr kind)
-            , ("operation", PStr op)
-            , ("head", PStr hd)
+        [ PyDict
+            [ ("type", PyStr kind)
+            , ("operation", PyStr op)
+            , ("head", PyStr hd)
             , ("comment_id", identifier)
             , ("url", url)
-            , ("owner", PStr owner)
+            , ("owner", PyStr owner)
             ]
         | Just (kind, op, hd) <- [immutable]
         ]
@@ -1272,14 +1269,14 @@ safeComment comment botLogin inline = do
   rerunMarkers <- forM (maybe [] pure rerun) \(identity, runId, hd, op) -> do
     runNumber <- py (intText runId)
     pure
-      ( PDict
-          [ ("type", PStr identity)
-          , ("run_id", PInt runNumber)
-          , ("head", PStr hd)
-          , ("operation", PStr op)
+      ( PyDict
+          [ ("type", PyStr identity)
+          , ("run_id", PyInt runNumber)
+          , ("head", PyStr hd)
+          , ("operation", PyStr op)
           , ("comment_id", identifier)
           , ("url", url)
-          , ("owner", PStr owner)
+          , ("owner", PyStr owner)
           ]
       )
   let kind =
@@ -1293,10 +1290,10 @@ safeComment comment botLogin inline = do
       let base =
             [ ("id", identifier)
             , ("url", url)
-            , ("owner", PStr owner)
-            , ("type", PStr kindText)
-            , ("inline", PBool inline)
-            , ("owned_by_app", PBool (pyCasefold owner == pyCasefold botLogin))
+            , ("owner", PyStr owner)
+            , ("type", PyStr kindText)
+            , ("inline", PyBool inline)
+            , ("owned_by_app", PyBool (pyCasefold owner == pyCasefold botLogin))
             ]
       finding <-
         if kindText /= "finding"
@@ -1315,16 +1312,16 @@ safeComment comment botLogin inline = do
               if inline
                 then do
                   primary <- py (getMaybe "line" comment)
-                  line <- if truthy primary then pure primary else py (getMaybe "original_line" comment)
-                  path <- pyStr <$> py (getOr "path" (PStr "") comment)
-                  pure [case line of PInt n | n > 0 -> Just (path, n); _ -> Nothing]
+                  line <- if pyTruthy primary then pure primary else py (getMaybe "original_line" comment)
+                  path <- pyStr <$> py (getOr "path" (PyStr "") comment)
+                  pure [case line of PyInt n | n > 0 -> Just (path, n); _ -> Nothing]
                 else forM sections \section -> case primaryLocation section of
                   Just (path, lineText) -> Just . (path,) <$> py (intText lineText)
                   Nothing -> pure Nothing
             let paired = zip locations sections
-                count = PInt . fromIntegral . length . filter id
+                count = PyInt . fromIntegral . length . filter id
             pure
-              [ ("finding_count", PInt (fromIntegral (length sections)))
+              [ ("finding_count", PyInt (fromIntegral (length sections)))
               , ("hero_finding_count", count [maybe False (`elem` heroFindingLocations) l | l <- locations])
               , ( "suggestion_count"
                 , count [l == Just heroSuggestionLocation && "```suggestion\n" `T.isInfixOf` s | (l, s) <- paired]
@@ -1334,7 +1331,7 @@ safeComment comment botLogin inline = do
                 , count [l == Just heroRelatedLocation && "\nRelated locations:\n- " `T.isInfixOf` s | (l, s) <- paired]
                 )
               ]
-      pure (Just (PDict (base <> finding)), markers)
+      pure (Just (PyDict (base <> finding)), markers)
 
 -- ---------------------------------------------------------------------------
 -- Inspection
@@ -1351,8 +1348,8 @@ defaultInspectOptions = InspectOptions {botLogin = appBotLogin, expectHeroReview
 
 field :: Text -> PV -> PV
 field key = \case
-  PDict members -> fromMaybe PNone (lookup key members)
-  _ -> PNone
+  PyDict members -> fromMaybe PyNone (lookup key members)
+  _ -> PyNone
 
 -- | @inspect(pr_number, runner, bot_login=..., expect_hero_review=...,
 -- expect_readiness=...)@.
@@ -1364,17 +1361,17 @@ inspect op prNumber options = do
   pull <- api op (prefix <> "/pulls/" <> number)
   comments <- api op (prefix <> "/issues/" <> number <> "/comments?per_page=100")
   reviewComments <- api op (prefix <> "/pulls/" <> number <> "/comments?per_page=100")
-  head' <- pyStr <$> py (getOr "head" (PDict []) pull >>= getOr "sha" (PStr ""))
+  head' <- pyStr <$> py (getOr "head" (PyDict []) pull >>= getOr "sha" (PyStr ""))
   commit <- api op (prefix <> "/commits/" <> head')
   runsValue <- api op (prefix <> "/actions/runs?event=pull_request&head_sha=" <> head' <> "&per_page=100")
-  issueFound <- forM (case comments of PList items -> take 100 items; _ -> []) \comment -> safeComment comment options.botLogin False
-  reviewFound <- forM (case reviewComments of PList items -> take 100 items; _ -> []) \comment -> safeComment comment options.botLogin True
+  issueFound <- forM (case comments of PyList items -> take 100 items; _ -> []) \comment -> safeComment comment options.botLogin False
+  reviewFound <- forM (case reviewComments of PyList items -> take 100 items; _ -> []) \comment -> safeComment comment options.botLogin True
   let found = issueFound <> reviewFound
       safeComments = [safe | (Just safe, _) <- found]
       markers = concatMap snd found
-  runItems <- py (getOr "workflow_runs" (PList []) runsValue >>= sliceItems 20)
+  runItems <- py (getOr "workflow_runs" (PyList []) runsValue >>= sliceItems 20)
   runs <- forM runItems \item -> do
-    attempt <- py (getOr "run_attempt" (PInt 1) item >>= pyInt)
+    attempt <- py (getOr "run_attempt" (PyInt 1) item >>= pyInt)
     runId <- py (subscriptKey "id" item)
     jobsValue <- api op (prefix <> "/actions/runs/" <> pyStr runId <> "/attempts/" <> T.pack (show attempt) <> "/jobs?per_page=100")
     let get key = py (getMaybe key item)
@@ -1384,107 +1381,107 @@ inspect op prNumber options = do
     status <- get "status"
     conclusion <- get "conclusion"
     htmlUrl <- get "html_url"
-    jobItems <- py (getOr "jobs" (PList []) jobsValue >>= sliceItems 100)
+    jobItems <- py (getOr "jobs" (PyList []) jobsValue >>= sliceItems 100)
     jobs <- forM jobItems \job -> do
       values <- py (mapM (`getMaybe` job) ["id", "name", "status", "conclusion"])
-      pure (PDict (zip ["id", "name", "status", "conclusion"] values))
+      pure (PyDict (zip ["id", "name", "status", "conclusion"] values))
     pure
-      ( PDict
+      ( PyDict
           [ ("id", identifier)
           , ("name", name)
-          , ("attempt", PInt attempt)
+          , ("attempt", PyInt attempt)
           , ("head", headSha)
           , ("status", status)
           , ("conclusion", conclusion)
           , ("url", htmlUrl)
-          , ("jobs", PList jobs)
+          , ("jobs", PyList jobs)
           ]
       )
   let typeOf item = field "type" item
-      ownedByApp item = truthy (field "owned_by_app" item)
-      newMarkers = [item | item <- markers, pyEq (typeOf item) (PStr newMarker)]
-      oldMarkers = [item | item <- markers, pyEq (typeOf item) (PStr oldMarker)]
+      ownedByApp item = pyTruthy (field "owned_by_app" item)
+      newMarkers = [item | item <- markers, pyEq (typeOf item) (PyStr newMarker)]
+      oldMarkers = [item | item <- markers, pyEq (typeOf item) (PyStr oldMarker)]
       owned = not (null safeComments) && all ownedByApp safeComments
       markerOwned = all (\item -> pyCasefold (pyStr (field "owner" item)) == pyCasefold options.botLogin) newMarkers
       kinds = Set.fromList [pyStr (typeOf item) | item <- safeComments, ownedByApp item]
-  baseRepoId <- py (getOr "base" (PDict []) pull >>= getOr "repo" (PDict []) >>= getMaybe "id")
+  baseRepoId <- py (getOr "base" (PyDict []) pull >>= getOr "repo" (PyDict []) >>= getMaybe "id")
   let readinessPresent = "readiness" `Set.member` kinds
       checks =
-        [ check "pull_identity" (pyEq baseRepoId (PInt op.fixture.repositoryId)) baseRepoId
-        , check "hamsterdan_comment_ownership" (owned && markerOwned) (PStr options.botLogin)
-        , check "dashboard_present" ("dashboard" `Set.member` kinds) (PBool ("dashboard" `Set.member` kinds))
+        [ check "pull_identity" (pyEq baseRepoId (PyInt op.fixture.repositoryId)) baseRepoId
+        , check "hamsterdan_comment_ownership" (owned && markerOwned) (PyStr options.botLogin)
+        , check "dashboard_present" ("dashboard" `Set.member` kinds) (PyBool ("dashboard" `Set.member` kinds))
         , check
             (if options.expectReadiness then "readiness_advisory_present" else "readiness_advisory_absent")
             (readinessPresent == options.expectReadiness)
-            (PBool readinessPresent)
-        , check "legacy_markers_absent" (null oldMarkers) (PInt (fromIntegral (length oldMarkers)))
-        , check "workflow_heads_match" (all (\r -> pyEq (field "head" r) (PStr head')) runs) (PStr head')
+            (PyBool readinessPresent)
+        , check "legacy_markers_absent" (null oldMarkers) (PyInt (fromIntegral (length oldMarkers)))
+        , check "workflow_heads_match" (all (\r -> pyEq (field "head" r) (PyStr head')) runs) (PyStr head')
         ]
-      findings = [item | item <- safeComments, pyEq (typeOf item) (PStr "finding"), ownedByApp item]
-      total key = sum [n | item <- findings, PInt n <- [field key item]]
+      findings = [item | item <- safeComments, pyEq (typeOf item) (PyStr "finding"), ownedByApp item]
+      total key = sum [n | item <- findings, PyInt n <- [field key item]]
       heroChecks
         | options.expectHeroReview =
             let findingCount = total "hero_finding_count"
                 suggestionCount = total "suggestion_count"
                 conceptualCount = total "conceptual_count"
                 relatedCount = total "related_location_count"
-             in [ check "hero_findings" (findingCount >= 3) (PInt findingCount)
-                , check "hero_suggestion" (suggestionCount > 0) (PInt suggestionCount)
-                , check "hero_conceptual" (conceptualCount > 0) (PInt conceptualCount)
-                , check "hero_related_locations" (relatedCount > 0) (PInt relatedCount)
+             in [ check "hero_findings" (findingCount >= 3) (PyInt findingCount)
+                , check "hero_suggestion" (suggestionCount > 0) (PyInt suggestionCount)
+                , check "hero_conceptual" (conceptualCount > 0) (PyInt conceptualCount)
+                , check "hero_related_locations" (relatedCount > 0) (PyInt relatedCount)
                 ]
         | otherwise = []
       allChecks = checks <> heroChecks
-  authored <- py (getOr "commit" (PDict []) commit)
+  authored <- py (getOr "commit" (PyDict []) commit)
   commitAuthor <- py (getMaybe "author" authored)
   commitCommitter <- py (getMaybe "committer" authored)
   pullUrl <- py (getMaybe "html_url" pull)
   pullState <- py (getMaybe "state" pull)
   pullDraft <- py (getMaybe "draft" pull)
-  headRef <- py (getOr "head" (PDict []) pull >>= getMaybe "ref")
-  baseRef <- py (getOr "base" (PDict []) pull >>= getMaybe "ref")
+  headRef <- py (getOr "head" (PyDict []) pull >>= getMaybe "ref")
+  baseRef <- py (getOr "base" (PyDict []) pull >>= getMaybe "ref")
   authenticatedAuthor <- loginOf "author" commit
   authenticatedCommitter <- loginOf "committer" commit
   pure
-    ( PDict
-        [ ("command", PStr "inspect")
-        , ("repository", PStr op.fixture.repository)
-        , ("number", PInt prNumber)
+    ( PyDict
+        [ ("command", PyStr "inspect")
+        , ("repository", PyStr op.fixture.repository)
+        , ("number", PyInt prNumber)
         , ( "pull"
-          , PDict
+          , PyDict
               [ ("url", pullUrl)
               , ("state", pullState)
               , ("draft", pullDraft)
-              , ("head", PStr head')
+              , ("head", PyStr head')
               , ("head_ref", headRef)
               , ("base_ref", baseRef)
               ]
           )
-        , ("comments", PList (take 100 safeComments))
-        , ("markers", PList (take 100 markers))
-        , ("runs", PList runs)
+        , ("comments", PyList (take 100 safeComments))
+        , ("markers", PyList (take 100 markers))
+        , ("runs", PyList runs)
         , ( "attribution"
-          , PDict
+          , PyDict
               [ ("commit_author", commitAuthor)
               , ("commit_committer", commitCommitter)
               , ("authenticated_author", authenticatedAuthor)
               , ("authenticated_committer", authenticatedCommitter)
               ]
           )
-        , ("checks", PList allChecks)
-        , ("ok", PBool (all passed allChecks))
+        , ("checks", PyList allChecks)
+        , ("ok", PyBool (all passed allChecks))
         ]
     )
   where
     loginOf key commit = do
       value <- py (getMaybe key commit)
-      if isDict value then py (getOr key (PDict []) commit >>= getMaybe "login") else pure PNone
+      if isDict value then py (getOr key (PyDict []) commit >>= getMaybe "login") else pure PyNone
 
 -- | @_authority_policy(rules)@: strict base, required approvals,
 -- conversation resolution.
 authorityPolicy :: PV -> Either OperatorError (Bool, Integer, Bool)
 authorityPolicy rules = case rules of
-  PList items
+  PyList items
     | all isDict items ->
         if length items >= 100
           then Left (OperatorError "GitHub authority policy exceeds one bounded page")
@@ -1496,23 +1493,23 @@ authorityPolicy rules = case rules of
       (strict, approvals, resolution) <- acc
       let ruleType = field "type" rule
           parameters = field "parameters" rule
-      if pyEq ruleType (PStr "required_status_checks")
+      if pyEq ruleType (PyStr "required_status_checks")
         then case parameters of
-          PDict _
-            | PBool policy <- field "strict_required_status_checks_policy" parameters
-            , PList required <- field "required_status_checks" parameters -> do
+          PyDict _
+            | PyBool policy <- field "strict_required_status_checks_policy" parameters
+            , PyList required <- field "required_status_checks" parameters -> do
                 forM_ required \case
-                  PDict check' | Just (PStr context) <- lookup "context" check', not (T.null context) -> Right ()
+                  PyDict check' | Just (PyStr context) <- lookup "context" check', not (T.null context) -> Right ()
                   _ -> malformed
                 Right (strict || policy, approvals, resolution)
           _ -> malformed
         else
-          if pyEq ruleType (PStr "pull_request")
+          if pyEq ruleType (PyStr "pull_request")
             then
-              let count = if isDict parameters then field "required_approving_review_count" parameters else PNone
-                  conversations = if isDict parameters then field "required_review_thread_resolution" parameters else PNone
+              let count = if isDict parameters then field "required_approving_review_count" parameters else PyNone
+                  conversations = if isDict parameters then field "required_review_thread_resolution" parameters else PyNone
                in case (count, conversations) of
-                    (PInt n, PBool c) | n >= 0 -> Right (strict, max approvals n, resolution || c)
+                    (PyInt n, PyBool c) | n >= 0 -> Right (strict, max approvals n, resolution || c)
                     _ -> malformed
             else Right (strict, approvals, resolution)
 
@@ -1520,7 +1517,7 @@ authorityPolicy rules = case rules of
 -- case-folded reviewer order, with dismissals as tombstones.
 latestReviews :: PV -> Either OperatorError [(Text, Text)]
 latestReviews value = case value of
-  PList items
+  PyList items
     | all isDict items ->
         if length items >= 100
           then Left (OperatorError "GitHub review authority exceeds one bounded page")
@@ -1539,10 +1536,10 @@ latestReviews value = case value of
     step acc review = do
       (order, table) <- acc
       let login = case field "user" review of
-            user@(PDict _) -> field "login" user
-            _ -> PNone
+            user@(PyDict _) -> field "login" user
+            _ -> PyNone
       case (login, field "state" review, field "submitted_at" review, field "id" review) of
-        (PStr loginText, PStr state, PStr submitted, PInt identifier) | not (T.null loginText) -> do
+        (PyStr loginText, PyStr state, PyStr submitted, PyInt identifier) | not (T.null loginText) -> do
           let normalized = pyUpper state
               key = pyCasefold loginText
           if normalized `notElem` ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"]
@@ -1587,20 +1584,20 @@ reviewFacts op prNumber = do
         _ -> malformed
       _ -> malformed
   let validNode node = case node of
-        PDict _ -> isStr (field "id" node) && isBool (field "isResolved" node)
+        PyDict _ -> isStr (field "id" node) && isBool (field "isResolved" node)
         _ -> False
   nodeItems <- case nodes of
-    PList items | all validNode items -> pure items
+    PyList items | all validNode items -> pure items
     _ -> malformed
   hasNext <- case page of
-    PDict _ | PBool b <- field "hasNextPage" page -> pure b
+    PyDict _ | PyBool b <- field "hasNextPage" page -> pure b
     _ -> malformed
-  knownDecision <- py (inSet decision [PNone, PStr "APPROVED", PStr "CHANGES_REQUESTED", PStr "REVIEW_REQUIRED"])
+  knownDecision <- py (inSet decision [PyNone, PyStr "APPROVED", PyStr "CHANGES_REQUESTED", PyStr "REVIEW_REQUIRED"])
   unless knownDecision malformed
   when hasNext $ operatorError "GitHub review-thread authority exceeds one bounded page"
   pure (fromIntegral (length [() | node <- nodeItems, field "isResolved" node `pyEqBool` False]), decision)
   where
-    pyEqBool v b = case v of PBool x -> x == b; _ -> False
+    pyEqBool v b = case v of PyBool x -> x == b; _ -> False
 
 -- | @inspect_authority(pr_number, expected, runner)@: inspect real GitHub
 -- authority without copying provider objects.
@@ -1615,28 +1612,28 @@ inspectAuthority op prNumber expected = do
   pull <- api op (prefix <> "/pulls/" <> number)
   unless (isDict pull) $ operatorError "GitHub pull-request authority evidence is malformed"
   (headSha, baseRef, author) <- case (dig pull ["head", "sha"], dig pull ["base", "ref"], dig pull ["user", "login"]) of
-    (Just (PStr sha), Just (PStr ref), Just (PStr login))
+    (Just (PyStr sha), Just (PyStr ref), Just (PyStr login))
       | isHexSha sha && not (T.null ref) && not (T.null login) -> pure (sha, ref, login)
     _ -> operatorError "GitHub pull-request authority evidence is malformed"
   let encodedBase = urlQuote baseRef
   reference <- api op (prefix <> "/git/ref/heads/" <> encodedBase)
   baseSha <- case dig reference ["object", "sha"] of
-    Just (PStr sha) | isHexSha sha -> pure sha
+    Just (PyStr sha) | isHexSha sha -> pure sha
     _ -> operatorError "GitHub base authority evidence is malformed"
   comparison <- api op (prefix <> "/compare/" <> baseSha <> "..." <> headSha)
-  behind <- case (if isDict comparison then field "behind_by" comparison else PNone) of
-    PInt n | n >= 0 -> pure n
+  behind <- case (if isDict comparison then field "behind_by" comparison else PyNone) of
+    PyInt n | n >= 0 -> pure n
     _ -> operatorError "GitHub comparison authority evidence is malformed"
   (strict, required, resolution) <-
     api op (prefix <> "/rules/branches/" <> encodedBase <> "?per_page=100") >>= either throwIO pure . authorityPolicy
   requestedValue <- api op (prefix <> "/pulls/" <> number <> "/requested_reviewers")
-  let requestedUsers = if isDict requestedValue then field "users" requestedValue else PNone
-      requestedTeams = if isDict requestedValue then field "teams" requestedValue else PNone
+  let requestedUsers = if isDict requestedValue then field "users" requestedValue else PyNone
+      requestedTeams = if isDict requestedValue then field "teams" requestedValue else PyNone
   (users, teamItems) <- case (requestedUsers, requestedTeams) of
-    (PList us, PList ts) | all isDict us && all isDict ts -> pure (us, ts)
+    (PyList us, PyList ts) | all isDict us && all isDict ts -> pure (us, ts)
     _ -> operatorError "GitHub requested-reviewer authority evidence is malformed"
-  let requested = sort [login | user <- users, PStr login <- [field "login" user], not (T.null login)]
-      teams = sort [slug | team <- teamItems, PStr slug <- [field "slug" team], not (T.null slug)]
+  let requested = sort [login | user <- users, PyStr login <- [field "login" user], not (T.null login)]
+      teams = sort [slug | team <- teamItems, PyStr slug <- [field "slug" team], not (T.null slug)]
   reviews <- api op (prefix <> "/pulls/" <> number <> "/reviews?per_page=100") >>= either throwIO pure . latestReviews
   let approvals = sort [login | (login, state) <- reviews, state == "APPROVED", pyCasefold login /= pyCasefold author]
       changes = sort [login | (login, state) <- reviews, state == "CHANGES_REQUESTED"]
@@ -1644,12 +1641,12 @@ inspectAuthority op prNumber expected = do
   let mergeable = field "mergeable" pull
       mergeableState = field "mergeable_state" pull
       draftValue = field "draft" pull
-  knownMergeable <- py (inSet mergeable [PBool True, PBool False, PNone])
+  knownMergeable <- py (inSet mergeable [PyBool True, PyBool False, PyNone])
   draft <- case (knownMergeable, mergeableState, draftValue) of
-    (True, PStr _, PBool d) -> pure d
+    (True, PyStr _, PyBool d) -> pure d
     _ -> operatorError "GitHub mergeability authority evidence is malformed"
   case mergeable of
-    PNone -> operatorError "GitHub mergeability authority is indeterminate; retry inspection"
+    PyNone -> operatorError "GitHub mergeability authority is indeterminate; retry inspection"
     _ -> pure ()
   finalPull <- api op (prefix <> "/pulls/" <> number)
   finalReference <- api op (prefix <> "/git/ref/heads/" <> encodedBase)
@@ -1657,34 +1654,34 @@ inspectAuthority op prNumber expected = do
     (Just a, Just b, Just c) -> pure (a, b, c)
     _ -> operatorError "GitHub final authority basis is malformed"
   let (finalHead, finalBase, finalSha) = finalBasis
-  unless (pyEq finalHead (PStr headSha) && pyEq finalBase (PStr baseRef) && pyEq finalSha (PStr baseSha)) $
+  unless (pyEq finalHead (PyStr headSha) && pyEq finalBase (PyStr baseRef) && pyEq finalSha (PyStr baseSha)) $
     operatorError "GitHub authority changed during inspection"
-  let mergeableState' = case mergeableState of PStr s -> s; _ -> ""
-      isTrue = \case PBool True -> True; _ -> False
-      isFalse = \case PBool False -> True; _ -> False
+  let mergeableState' = case mergeableState of PyStr s -> s; _ -> ""
+      isTrue = \case PyBool True -> True; _ -> False
+      isFalse = \case PyBool False -> True; _ -> False
       authority =
-        PDict
-          [ ("draft", PBool draft)
-          , ("head", PStr (T.toLower headSha))
-          , ("base", PStr (T.toLower baseSha))
-          , ("base_ref", PStr baseRef)
-          , ("behind_by", PInt behind)
+        PyDict
+          [ ("draft", PyBool draft)
+          , ("head", PyStr (T.toLower headSha))
+          , ("base", PyStr (T.toLower baseSha))
+          , ("base_ref", PyStr baseRef)
+          , ("behind_by", PyInt behind)
           , ("mergeable", mergeable)
           , ("mergeable_state", mergeableState)
-          , ("strict_base", PBool strict)
-          , ("required_approvals", PInt required)
-          , ("conversation_resolution", PBool resolution)
-          , ("requested_reviewers", PList (map PStr requested))
-          , ("requested_teams", PList (map PStr teams))
+          , ("strict_base", PyBool strict)
+          , ("required_approvals", PyInt required)
+          , ("conversation_resolution", PyBool resolution)
+          , ("requested_reviewers", PyList (map PyStr requested))
+          , ("requested_teams", PyList (map PyStr teams))
           , ( "latest_reviews"
-            , PList [PDict [("reviewer", PStr login), ("state", PStr state)] | (login, state) <- sortOn fst reviews]
+            , PyList [PyDict [("reviewer", PyStr login), ("state", PyStr state)] | (login, state) <- sortOn fst reviews]
             )
-          , ("distinct_approvals", PList (map PStr approvals))
-          , ("changes_requested", PList (map PStr changes))
-          , ("unresolved_threads", PInt unresolved)
+          , ("distinct_approvals", PyList (map PyStr approvals))
+          , ("changes_requested", PyList (map PyStr changes))
+          , ("unresolved_threads", PyInt unresolved)
           , ("review_decision", reviewDecision)
           ]
-      approved = pyEq reviewDecision (PStr "APPROVED")
+      approved = pyEq reviewDecision (PyStr "APPROVED")
       expectation = case expected of
         "non-draft" -> not draft
         "strict-stale" -> not draft && strict && behind > 0 && isTrue mergeable
@@ -1697,15 +1694,15 @@ inspectAuthority op prNumber expected = do
       checkValue = check expected expectation authority
   url <- py (getMaybe "html_url" pull)
   pure
-    ( PDict
-        [ ("command", PStr "inspect-authority")
-        , ("repository", PStr op.fixture.repository)
-        , ("number", PInt prNumber)
+    ( PyDict
+        [ ("command", PyStr "inspect-authority")
+        , ("repository", PyStr op.fixture.repository)
+        , ("number", PyInt prNumber)
         , ("url", url)
-        , ("expectation", PStr expected)
+        , ("expectation", PyStr expected)
         , ("authority", authority)
-        , ("checks", PList [checkValue])
-        , ("ok", PBool expectation)
+        , ("checks", PyList [checkValue])
+        , ("ok", PyBool expectation)
         ]
     )
 
@@ -1805,9 +1802,9 @@ runOperator env argv = do
             qualificationSetup env.setupRunner credentialFile targetFile spentMarker
         let value = case result of
               Right v -> v
-              Left (OperatorError message) -> PDict [("command", PStr name), ("ok", PBool False), ("error", PStr message)]
+              Left (OperatorError message) -> PyDict [("command", PyStr name), ("ok", PyBool False), ("error", PyStr message)]
         line <- raiseEither (PyV.dumpsLine value)
-        pure (line, truthy (field "ok" value))
+        pure (line, pyTruthy (field "ok" value))
       case outcome of
         Right (line, ok) -> do
           BS.hPut env.output (line <> "\n")

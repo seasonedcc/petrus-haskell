@@ -61,6 +61,7 @@ library
                   , containers >=0.6
                   , petrus-impetus
                   , petrus-json
+                  , petrus-posix
                   , text >=2.0
                   , time >=1.12
   ghc-options:      -O2

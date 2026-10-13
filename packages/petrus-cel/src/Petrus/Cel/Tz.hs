@@ -38,6 +38,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Cel.Python (ExcClass (..), PyErr (..))
 import Petrus.Cel.Tz.Tables qualified as Tables
+import Petrus.Posix.Path qualified as Path
 
 -- | One zone: what C @_zoneinfo@ keeps of a TZif file for @fromutc@.
 data Zone = Zone
@@ -89,27 +90,9 @@ validateKey key
     normal = normpath key
     invalid message = Left (PyErr ValueError (message <> key))
 
--- | @posixpath.normpath@.
+-- | @posixpath.normpath@ of a key.
 normpath :: Text -> Text
-normpath path
-  | T.null path = "."
-  | otherwise =
-      let initial
-            | "//" `T.isPrefixOf` path && not ("///" `T.isPrefixOf` path) = "//"
-            | "/" `T.isPrefixOf` path = "/"
-            | otherwise = ""
-          step acc component
-            | component == "" || component == "." = acc
-            | component == ".." =
-                if T.null initial && (null acc || head' acc == "..")
-                  then component : acc
-                  else drop 1 acc
-            | otherwise = component : acc
-          head' = \case
-            c : _ -> c
-            [] -> ""
-          joined = initial <> T.intercalate "/" (reverse (foldl' step [] (T.splitOn "/" path)))
-       in if T.null joined then "." else joined
+normpath = T.pack . Path.normpath . T.unpack
 
 -- | The directory @importlib.resources.files@ gives for the package
 -- @tzdata.zoneinfo.<parts>@, or 'Nothing' when the import fails.

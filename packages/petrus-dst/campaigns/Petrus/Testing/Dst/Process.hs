@@ -16,7 +16,7 @@ import Control.Concurrent.Async (wait, withAsync)
 import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text.Encoding qualified as TE
-import System.Exit (ExitCode (..))
+import Petrus.Posix.Process (exitInt)
 import System.IO (Handle)
 import System.Posix.Signals (sigKILL, signalProcess)
 import System.Process
@@ -47,9 +47,3 @@ killNow :: ProcessHandle -> IO Int
 killNow child = do
   getPid child >>= mapM_ (signalProcess sigKILL)
   exitInt <$> waitForProcess child
-
--- | A Python @returncode@: the exit status, or minus the signal number.
-exitInt :: ExitCode -> Int
-exitInt = \case
-  ExitSuccess -> 0
-  ExitFailure n -> n

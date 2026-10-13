@@ -21,6 +21,7 @@ import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Internal qualified as BSI
+import Data.Char (intToDigit)
 import Data.IORef (IORef, atomicModifyIORef', newIORef)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -69,7 +70,7 @@ uuid4HexText bytes = T.pack (concatMap hex (zipWith adjust [0 :: Int ..] (BS.unp
       | i == 6 = (b .&. 0x0f) .|. 0x40
       | i == 8 = (b .&. 0x3f) .|. 0x80
       | otherwise = b
-    digit n = "0123456789abcdef" !! fromIntegral n
+    digit n = intToDigit (fromIntegral n)
     hex b = [digit (b `shiftR` 4), digit (b .&. 0x0f)]
 
 -- | @uuid.uuid7().hex@: a fresh version-7 UUID as 32 lowercase hex digits.

@@ -13,7 +13,7 @@ import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Hamsterdan.Python.Object (PV (..), pythonError)
+import Hamsterdan.Python.Object (PyObject (..), pythonError)
 import Hamsterdan.Host.PublicationQualification
 import Hamsterdan.Operator (SetupCompleted (..), qualificationSetup)
 import Support (at, encoded)
@@ -286,7 +286,7 @@ spec = describe "tests/integration/host/test_qualification_setup_local.py" do
           (qualificationSetup fakeRunner credential targetFile marker)
       let retained = encoded result
       case at "ok" result of
-        PBool True -> pure ()
+        PyBool True -> pure ()
         other -> expectationFailure ("ok: " <> show other <> " " <> T.unpack retained)
       doesPathExist marker `shouldReturn` True
       doesPathExist credential `shouldReturn` False

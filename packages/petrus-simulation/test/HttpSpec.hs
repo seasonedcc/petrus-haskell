@@ -566,6 +566,23 @@ conformanceSpec = describe "spec/simulation-http-v1.md" $ do
             if reply.status == 429 && attempts > (0 :: Int) then threadDelay 20000 >> poll (attempts - 1) else pure reply.status
       poll 100 `shouldReturn` 200
 
+  it "bounds a response write to a client that never reads by the five-second connection timeout" $ do
+    -- BaseHTTPRequestHandler's settimeout(5) bounds the response's sendall
+    -- as it bounds a read: the handler gives up on the write after five
+    -- seconds, so a close waiting for it returns then, not before and not
+    -- never.
+    returned <- newEmptyMVar
+    let large = BS.replicate (32 * 1024 * 1024) 0x20
+        runner _ _ _ = tryPutMVar returned () >> pure (Right large)
+    (server, port, serving') <- started (withRunner runner)
+    withSilentClient port (rawPost (postBody server (Array []) Nothing) "") $ \_ -> do
+      within 2 returned `shouldReturn` Just ()
+      shutdownSimulationServer server
+      closed <- forked (closeSimulationServer server)
+      within 3 closed `shouldReturn` Nothing
+      within 4 closed `shouldReturn` Just ()
+    within 2 serving' `shouldReturn` Just ()
+
   it "writes every error as compact sorted strict JSON with exactly code and message" $
     serving config $ \_ port ->
       forM_

@@ -31,7 +31,7 @@ diverges.
 | `Hamsterdan.Python.Exception` | the one exception value | `PythonException`, `pythonError`, `keyError`, `raise`, `pythonExceptionStr`, `pythonFailureText`, `dumpsError`, `raisingDumps` |
 | `Hamsterdan.Python.Hashlib` | `hashlib.sha256(...).hexdigest()` | `sha256Hex`, `sha256HexText` |
 | `Hamsterdan.Python.Url` | `urllib.parse` | `urlsplit`, `urlunsplit`, `hostname`, `port`, `username`, `password`, `quote`, `unquote` |
-| `Hamsterdan.Python.Object` | the dynamic object model the exporter and the operator read untrusted values with | `PV`, `pyStr`, `pyRepr`, `pyInt`, `pyEq`, `loadsText`, `loadsValue`, `toJson`; its failures are `PythonException`s, printed by `errorLine` (the class qualified by `tracebackName`) |
+| `Hamsterdan.Python.Object` | the dynamic object model the exporter and the operator read untrusted values with | `PV` (petrus-json's `PyObject`), `pyStr`, `pyRepr`, `pyInt`, `pyEq`, `loadsText`, `loadsValue`, `toJson`; its failures are `PythonException`s, printed by `errorLine` (the class qualified by `tracebackName`) |
 
 ## How the codecs work
 

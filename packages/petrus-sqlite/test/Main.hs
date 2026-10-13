@@ -12,6 +12,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Clock (getMonotonicTime)
 import Petrus.Json (Json (..), defaultDumps, dumps, encodeErrorMessage, pythonFloatRepr)
+import Petrus.Json.Python (pythonError)
 import Petrus.Posix (FileStat (..), Follow (..), permissionBits, realpath, statAt)
 import Petrus.Sqlite
 import Petrus.TestSupport
@@ -215,6 +216,16 @@ paramSpec = describe "Parameters" $ do
       let pairs (a : b : rest) = (a, b) : pairs rest
           pairs _ = []
       forM_ (pairs rows) $ \(viaText, viaBytes) -> viaBytes `shouldBe` viaText
+
+  it "refuses a str or bytes parameter past INT_MAX bytes with CPython's OverflowError" $ do
+    -- The guard every text and blob bind passes, driven directly: a real
+    -- parameter that long would take 2 GiB. CPython 3.14's sqlite3 raises
+    -- these texts; at exactly INT_MAX bytes it binds, and SQLite refuses
+    -- (DataError: string or blob too big).
+    bindLength "string" 2147483647 `shouldBe` Right 2147483647
+    bindLength "string" 2147483648 `shouldBe` Left (pythonError "OverflowError" "string longer than INT_MAX bytes")
+    bindLength "BLOB" 2147483648 `shouldBe` Left (pythonError "OverflowError" "BLOB longer than INT_MAX bytes")
+    bindLength "string" maxBound `shouldBe` Left (pythonError "OverflowError" "string longer than INT_MAX bytes")
 
   it "refuses a parameter list of the wrong length, UTF-8 text included" $ withTemp $ \dir ->
     withConnection historyStoreProfile (dir </> "p.sqlite3") $ \connection -> do

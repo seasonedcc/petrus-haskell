@@ -52,6 +52,7 @@ module Petrus.Sqlite.Connection
 
     -- * Statements
   , Param (..)
+  , bindLength
   , execute
   , executeParams
   , execute_
@@ -84,6 +85,7 @@ import Control.Concurrent (threadDelay)
 import Control.Exception (Exception, SomeException, bracket, catch, mask, onException, throwIO, try)
 import Control.Monad (forM_, void, when, zipWithM_)
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.Char (isSpace)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.Int (Int64)
@@ -108,10 +110,11 @@ import Database.SQLite3
 import Database.SQLite3 qualified as S
 import Database.SQLite3.Bindings.Types (CDatabase, CError (..), CStatement, decodeError)
 import Database.SQLite3.Direct qualified as Direct
-import Foreign.C.Types (CInt (..))
+import Foreign.C.Types (CInt (..), CPtrdiff (..))
 import Foreign.Ptr (Ptr)
 import GHC.Exts (ByteArray#)
 import GHC.Clock (getMonotonicTime)
+import Petrus.Json.Python (PythonException, pythonError)
 import Petrus.Posix.Path (purePath)
 import Petrus.Sqlite.PythonRepr (pythonReprSqlData)
 
@@ -455,13 +458,27 @@ bindAll statement params = do
   where
     bindParam index = \case
       Datum (SQLText text) -> bindTextParam statement index text
+      Datum datum@(SQLBlob bytes) -> do
+        _ <- either throwIO pure (bindLength "BLOB" (BS.length bytes))
+        S.bindSQLData statement (fromIntegral index) datum
       Datum datum -> S.bindSQLData statement (fromIntegral index) datum
-      Utf8Text bytes ->
+      Utf8Text bytes -> do
+        _ <- either throwIO pure (bindLength "string" (BS.length bytes))
         Direct.bindText statement (Direct.ParamIndex index) (Direct.Utf8 bytes)
           >>= either (textBindFailure statement) pure
 
+-- | The length SQLite's @int@ length argument takes for a @str@
+-- (@"string"@) or @bytes@ (@"BLOB"@) parameter of this many bytes, or the
+-- @OverflowError@ CPython's @sqlite3@ raises before binding one longer
+-- than @INT_MAX@ bytes (whose length would wrap, and SQLite then read past
+-- the buffer).
+bindLength :: Text -> Int -> Either PythonException CInt
+bindLength kind size
+  | toInteger size > toInteger (maxBound :: CInt) = Left (pythonError "OverflowError" (kind <> " longer than INT_MAX bytes"))
+  | otherwise = Right (fromIntegral size)
+
 foreign import ccall unsafe "petrus_sqlite_bind_text"
-  c_petrus_sqlite_bind_text :: Ptr CStatement -> CInt -> ByteArray# -> Int -> CInt -> IO CInt
+  c_petrus_sqlite_bind_text :: Ptr CStatement -> CInt -> ByteArray# -> CPtrdiff -> CInt -> IO CInt
 
 -- | Bind a text parameter (1-based) from the 'Text''s own UTF-8 array,
 -- which SQLite copies before returning (@SQLITE_TRANSIENT@, as CPython binds
@@ -470,10 +487,12 @@ foreign import ccall unsafe "petrus_sqlite_bind_text"
 -- gated @tx.immediate-insert-100@ row, which sits within a few percent of
 -- the reference: 312 µs against 332 µs with 'S.bind' (medians of ten
 -- interleaved repetitions), then 328 against 333 µs beside CPython's 341 µs
--- (six; Apple M4, 2026-10-12; bench/RESULTS.md).
+-- (six; Apple M4, 2026-10-12; bench/RESULTS.md). A text past @INT_MAX@
+-- bytes raises CPython's @OverflowError@ first ('bindLength').
 bindTextParam :: Statement -> Int -> Text -> IO ()
-bindTextParam statement@(Direct.Statement handle) index (TI.Text (TA.ByteArray array) offset size) =
-  c_petrus_sqlite_bind_text handle (fromIntegral index) array offset (fromIntegral size) >>= \case
+bindTextParam statement@(Direct.Statement handle) index (TI.Text (TA.ByteArray array) offset size) = do
+  length' <- either throwIO pure (bindLength "string" size)
+  c_petrus_sqlite_bind_text handle (fromIntegral index) array (fromIntegral offset) length' >>= \case
     0 -> pure ()
     code -> textBindFailure statement (decodeError (CError code))
 

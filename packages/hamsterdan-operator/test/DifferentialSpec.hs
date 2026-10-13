@@ -22,7 +22,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Encoding.Error qualified as TEE
 import Fakes (normalizeText, wrapperScript, writeExecutable)
-import Hamsterdan.Python.Object (PV (..))
+import Hamsterdan.Python.Object (PV, PyObject (..))
 import Hamsterdan.Operator (Completed (..), appBotLogin, authorityReviewFacts)
 import OperatorSpec
   ( authorityResponses
@@ -108,7 +108,7 @@ scripted = map \(key, response) -> (commandLine key, [json response])
       | key == "graphql" = graphqlKey 9
       | otherwise = key
     json = \case
-      Value (PStr s) -> answer s
+      Value (PyStr s) -> answer s
       Value v -> value v
       Done c -> Object [("stdout", String c.stdout), ("stderr", String c.stderr), ("returncode", Int (toInteger c.returncode))]
 
@@ -362,7 +362,7 @@ inspectCases =
     inspecting appBotLogin (base "inspect with workflow runs given as an object" ["inspect", "--pr", "7"] 1) $
       replace ("gh api " <> repoPath ("/actions/runs?event=pull_request&head_sha=" <> sha 'a' <> "&per_page=100")) [value (obj [("workflow_runs", obj [("id", int 5)])])]
   , inspecting appBotLogin (base "inspect with a run on another head" ["inspect", "--pr", "7"] 1) $
-      replace ("gh api " <> repoPath ("/actions/runs?event=pull_request&head_sha=" <> sha 'a' <> "&per_page=100")) [value (obj [("workflow_runs", list [obj [("id", int 8), ("run_attempt", PFloat 1.0), ("head_sha", str (sha 'b'))]])])]
+      replace ("gh api " <> repoPath ("/actions/runs?event=pull_request&head_sha=" <> sha 'a' <> "&per_page=100")) [value (obj [("workflow_runs", list [obj [("id", int 8), ("run_attempt", PyFloat 1.0), ("head_sha", str (sha 'b'))]])])]
         . ((repoPath' "/actions/runs/8/attempts/1/jobs?per_page=100", [value (obj [("jobs", list [])])]) :)
   , inspecting appBotLogin (base "inspect with a commit lacking attribution" ["inspect", "--pr", "7"] 0) $
       replace ("gh api " <> repoPath ("/commits/" <> sha 'a')) [value (obj [("author", none), ("committer", str "x")])] . clean
@@ -371,10 +371,10 @@ inspectCases =
     issuesPath = repoPath "/issues/7/comments?per_page=100"
     cleanComments = cleanCommentsOf appBotLogin
     cleanCommentsOf owner = case lookup issuesPath (inspectionResponses owner) of
-      Just (Value (PList items)) -> [item | item <- items, not (legacyComment item)]
+      Just (Value (PyList items)) -> [item | item <- items, not (legacyComment item)]
       _ -> error "no comments fixture"
     legacyComment = \case
-      PDict members | Just (PInt 5) <- lookup "id" members -> True
+      PyDict members | Just (PyInt 5) <- lookup "id" members -> True
       _ -> False
     clean = cleanOf appBotLogin
     cleanOf owner = replace ("gh api " <> issuesPath) [value (list (cleanCommentsOf owner))]

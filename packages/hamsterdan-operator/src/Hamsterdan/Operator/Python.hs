@@ -31,7 +31,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Hamsterdan.Python.Exception (PyObject (..), PythonException (..), dumpsError, keyError, pythonError)
-import Hamsterdan.Python.Object (PV (..), hashCheck, loadsValue, pyEq, toJson, typeName)
+import Hamsterdan.Python.Object (PV, hashCheck, loadsValue, pyEq, pyTypeName, toJson)
 import Hamsterdan.Python.Text qualified as Py
 import Hamsterdan.Python.Url qualified as Url
 import Petrus.EngineFile.PyText (decodeText)
@@ -40,28 +40,28 @@ import Petrus.Json (defaultDumps, dumps)
 -- | @value.get(key, default)@ on what must be a dict.
 getOr :: Text -> PV -> PV -> Either PythonException PV
 getOr key fallback = \case
-  PDict members -> Right (maybe fallback id (lookup key members))
-  other -> Left (pythonError "AttributeError" ("'" <> typeName other <> "' object has no attribute 'get'"))
+  PyDict members -> Right (maybe fallback id (lookup key members))
+  other -> Left (pythonError "AttributeError" ("'" <> pyTypeName other <> "' object has no attribute 'get'"))
 
--- | @value.get(key)@ ('PNone' when absent).
+-- | @value.get(key)@ ('PyNone' when absent).
 getMaybe :: Text -> PV -> Either PythonException PV
-getMaybe key = getOr key PNone
+getMaybe key = getOr key PyNone
 
 -- | @value[key]@ for a @str@ key.
 subscriptKey :: Text -> PV -> Either PythonException PV
 subscriptKey key = \case
-  PDict members -> maybe (Left (keyError key)) Right (lookup key members)
-  PStr _ -> Left (pythonError "TypeError" "string indices must be integers, not 'str'")
-  PList _ -> Left (pythonError "TypeError" "list indices must be integers or slices, not str")
-  other -> Left (pythonError "TypeError" ("'" <> typeName other <> "' object is not subscriptable"))
+  PyDict members -> maybe (Left (keyError key)) Right (lookup key members)
+  PyStr _ -> Left (pythonError "TypeError" "string indices must be integers, not 'str'")
+  PyList _ -> Left (pythonError "TypeError" "list indices must be integers or slices, not str")
+  other -> Left (pythonError "TypeError" ("'" <> pyTypeName other <> "' object is not subscriptable"))
 
 -- | The items @for item in value[:n]@ visits.
 sliceItems :: Int -> PV -> Either PythonException [PV]
 sliceItems n = \case
-  PList items -> Right (take n items)
-  PStr s -> Right (map (PStr . T.singleton) (T.unpack (T.take n s)))
-  PDict _ -> Left (PythonException "KeyError" [PySlice Nothing (Just (toInteger n)) Nothing])
-  other -> Left (pythonError "TypeError" ("'" <> typeName other <> "' object is not subscriptable"))
+  PyList items -> Right (take n items)
+  PyStr s -> Right (map (PyStr . T.singleton) (T.unpack (T.take n s)))
+  PyDict _ -> Left (PythonException "KeyError" [PySlice Nothing (Just (toInteger n)) Nothing])
+  other -> Left (pythonError "TypeError" ("'" <> pyTypeName other <> "' object is not subscriptable"))
 
 -- | @value in {a, b, ...}@: an unhashable probe raises; otherwise equality
 -- as @==@ decides (so @1 in {True}@).
@@ -71,12 +71,12 @@ inSet value members = do
   Right (any (pyEq value) members)
 
 isDict, isList, isStr, isInt, isBool :: PV -> Bool
-isDict = \case PDict _ -> True; _ -> False
-isList = \case PList _ -> True; _ -> False
-isStr = \case PStr _ -> True; _ -> False
+isDict = \case PyDict _ -> True; _ -> False
+isList = \case PyList _ -> True; _ -> False
+isStr = \case PyStr _ -> True; _ -> False
 -- | @type(value) is int@.
-isInt = \case PInt _ -> True; _ -> False
-isBool = \case PBool _ -> True; _ -> False
+isInt = \case PyInt _ -> True; _ -> False
+isBool = \case PyBool _ -> True; _ -> False
 
 -- | @urllib.parse.quote(text, safe="")@.
 urlQuote :: Text -> Text

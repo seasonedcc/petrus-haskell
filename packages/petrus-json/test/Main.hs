@@ -15,6 +15,7 @@ import Petrus.Json.FloatReprSpec qualified as FloatReprSpec
 import Petrus.Json.Generators
 import Petrus.Json.InPlaceSpec qualified as InPlaceSpec
 import Petrus.Json.Python (PythonException (..), pythonExceptionRepr, pythonExceptionStr, pythonInt)
+import Petrus.Json.Python qualified as Python
 import Petrus.Json.Python.Object
 import Petrus.Json.Python.OsError (errnoClass, osError)
 import Petrus.Json.Python.Pydantic qualified as Pydantic
@@ -341,6 +342,15 @@ main = hspec $ do
         `shouldBe` Left "maximum nesting depth (3) exceeded while decoding a JSON object from a unicode string"
     it "survives input far deeper than any stack" $
       parseJson surrogateRefusingLoads (arrays 1000000) `shouldSatisfy` isLeft
+    it "json.loads(str) applies the limit whether or not the text holds a lone surrogate" $ do
+      let nestedText n inner = T.replicate n "[" <> inner <> T.replicate n "]"
+          surrogate = fromCodePoints "\"\xD800\""
+          refusedAs name = \case
+            Left (PythonException className _) -> className == name
+            Right _ -> False
+      Python.loadsText (nestedText (defaultNestingLimit + 1) "1") `shouldSatisfy` refusedAs "RecursionError"
+      Python.loadsText (nestedText (defaultNestingLimit + 1) surrogate) `shouldSatisfy` refusedAs "RecursionError"
+      Python.loadsText (nestedText 3 surrogate) `shouldSatisfy` either (const False) (const True)
     it "bounds the encoder too, where empty containers do not recurse (as in CPython)" $ do
       let nested n = iterate (Array . pure) (Array []) !! (n - 1)
           len = fmap BC.length . dumps compact

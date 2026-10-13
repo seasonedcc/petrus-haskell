@@ -4,10 +4,13 @@ version:            0.1.0.0
 synopsis:           POSIX primitives with Python-identical behavior for the Petrus port
 description:
   BSD @flock(2)@ locks that exclude (and are excluded by) Python's
-  @fcntl.flock@; openat-family file operations; ports of CPython's
-  @Path.resolve@, @Path.expanduser@ and @os.path.realpath@; fsync and the
-  upstream atomic-replace pattern; and @getrusage@/@sysconf@ figures as
-  upstream telemetry reports them.
+  @fcntl.flock@; openat-family file operations, @linkat@ and
+  @shutil.rmtree@'s descriptor walk; ports of CPython's @Path.resolve@,
+  @Path.expanduser@, @os.path.realpath@, @os.path.normpath@,
+  @PurePosixPath@'s parts and parent, and @os.confstr@; fsync and the
+  upstream atomic-replace pattern; descriptor readiness (@poll@);
+  @getaddrinfo@ error codes; a child's @returncode@; and
+  @getrusage@/@sysconf@ figures as upstream telemetry reports them.
 license:            Apache-2.0
 license-file:       LICENSE
 copyright:          2026 Seasoned; portions 2026 Henrique Bastos (see NOTICE)
@@ -38,6 +41,7 @@ library
                     Petrus.Posix.Netdb
                     Petrus.Posix.Path
                     Petrus.Posix.Poll
+                    Petrus.Posix.Process
                     Petrus.Posix.Resource
   other-modules:    Petrus.Posix.Internal
   c-sources:        cbits/petrus_posix.c

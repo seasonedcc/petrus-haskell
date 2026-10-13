@@ -108,7 +108,9 @@ asPythonException :: SomeException -> Maybe PythonException
 asPythonException some = (\(SomePythonException e) -> toPythonException e) <$> fromException some
 
 -- | @Name(message)@ as the ports raise their own refusals: the message as
--- the one argument, or no argument when it is empty (@Name()@).
+-- the one argument, or no argument when it is empty (@Name()@). Unlike
+-- 'pythonError', an empty message gives @args == ()@, whose @repr()@ is
+-- @Name()@ rather than @Name('')@.
 raised :: Text -> Text -> PythonException
 raised className message = PythonException className [PyStr message | not (T.null message)]
 
@@ -116,7 +118,8 @@ instance NFData PythonException where
   rnf (PythonException className arguments) = rnf className `seq` rnf arguments
 
 -- | @Name(message)@: an exception raised with one string argument, the
--- shape of nearly every exception the ports raise.
+-- shape of nearly every exception the ports raise. The argument is kept
+-- even when it is empty (@Name('')@); 'raised' drops it.
 pythonError :: Text -> Text -> PythonException
 pythonError className message = PythonException className [PyStr message]
 

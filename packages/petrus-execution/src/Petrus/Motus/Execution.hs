@@ -129,13 +129,13 @@ module Petrus.Motus.Execution
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit, ord)
-import Data.List (nubBy)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.Motus.Execution.Error
+import Petrus.Json (pythonDict)
 import Petrus.Json.Python (isPythonSpace)
 
 -- ---------------------------------------------------------------------------
@@ -404,12 +404,6 @@ instance Show Command where
         . shows (commandOutputLimit c)
         . showString "}"
 
--- | Python @dict(pairs)@: first position, last value.
-dictFromPairs :: [(Text, a)] -> [(Text, a)]
-dictFromPairs pairs = [(key, lastValue key) | (key, _) <- nubBy (\a b -> fst a == fst b) pairs]
-  where
-    lastValue key = last [v | (k, v) <- pairs, k == key]
-
 environmentName :: Text -> Bool
 environmentName name = case T.uncons name of
   Just (first, rest) -> (isAsciiLetter first || first == '_') && T.all (\c -> isAsciiLetter c || isDigit c || c == '_') rest
@@ -455,8 +449,8 @@ mkCommand spec = do
             )
         )
     else Right ()
-  let environment = dictFromPairs (specEnvironment spec)
-      privateRoots = dictFromPairs (specPrivateRoots spec)
+  let environment = pythonDict (specEnvironment spec)
+      privateRoots = pythonDict (specPrivateRoots spec)
   if any (T.elem '\NUL') argv
     || any (\(k, v) -> not (environmentName k) || T.elem '\NUL' k || T.elem '\NUL' v) environment
     then Left (valueError "invalid command or environment value")

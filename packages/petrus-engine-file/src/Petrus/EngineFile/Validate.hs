@@ -29,6 +29,7 @@ import Petrus.EngineFile.Duration
 import Petrus.EngineFile.Number (IntParse (..), strAsFloat, strAsInt)
 import Petrus.EngineFile.Types
 import Petrus.EngineFile.Value
+import Petrus.Json (pythonDict)
 import Petrus.Json.Python.Exception (PythonException (..), pythonError)
 import Petrus.Json.Python.Pydantic qualified as Pydantic
 import Petrus.Json.Wtf8 (hasLoneSurrogate)
@@ -214,7 +215,7 @@ coerceNetPath :: Value -> Either PythonException (Either Text NetPath)
 coerceNetPath value = case value of
   VStr s -> Right (Right (netPathFromText s))
   VList items -> checkedSegments (map toPython items)
-  VDict members -> checkedSegments [VStr k | (k, _) <- pyDict members]
+  VDict members -> checkedSegments [VStr k | (k, _) <- pythonDict members]
   other -> Left (pythonError "TypeError" ("'" <> pyTypeName other <> "' object is not iterable"))
 
 -- | The segment check of @NetPath.__new__@ on a tuple of segments: a
@@ -274,7 +275,7 @@ vNetPath v = case coerceNetPath v of
 vDict :: (Text -> k) -> (Value -> V a) -> Value -> V [(k, a)]
 vDict key value v = case v of
   VDict members ->
-    (\pairs -> [(key k, a) | (k, a) <- pyDict pairs])
+    (\pairs -> [(key k, a) | (k, a) <- pythonDict pairs])
       <$> traverse (\(k, item) -> at (LocKey k) ((k,) <$> value item)) members
   _ -> failWith DictType v
 

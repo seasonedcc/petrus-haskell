@@ -60,11 +60,12 @@ import Petrus.Sqlite.Connection (pythonSqliteClass)
 import Foreign.C.Error (Errno (..), eISDIR, eNOENT)
 import GHC.IO.Exception (IOException (..))
 import Hamsterdan.Python.Exception qualified as Exc
-import Hamsterdan.Python.Object (PV (..), PythonException (..), pythonError, raise, raiseEither)
+import Hamsterdan.Python.Object (PV, PyObject (..), PythonException (..), pythonError, raise, raiseEither)
 import Hamsterdan.Python.Text (strRepr, utf8Encode)
 import Petrus.EngineFile.PyText (decodeText)
-import Petrus.EngineFile.Value (pyDict)
+import Petrus.Json (fromCodePoints, pythonDict)
 import Petrus.Json.Python (fsDecode, fsEncode)
+import Petrus.Posix.Path (purePathParent)
 import System.Directory (removePathForcibly)
 import System.Posix.ByteString (RawFilePath)
 import System.Posix.Types (Fd)
@@ -90,15 +91,10 @@ pathName path
   | path `elem` [".", "/", "//"] = ""
   | otherwise = snd (T.breakOnEnd "/" path)
 
--- | @path.parent@.
+-- | @path.parent@ (petrus-posix's 'purePathParent'; a lone surrogate in
+-- the name stays one, since only @/@ and @.@ are inspected).
 pathParent :: Text -> Text
-pathParent path
-  | path `elem` [".", "/", "//"] = path
-  | otherwise = case T.breakOnEnd "/" path of
-      ("", _) -> "."
-      (prefix, _)
-        | prefix `elem` ["/", "//"] -> prefix
-        | otherwise -> T.dropEnd 1 prefix
+pathParent = fromCodePoints . purePathParent . T.unpack
 
 -- | @path.suffix@.
 pathSuffix :: Text -> Text
@@ -402,14 +398,14 @@ readRow statement = do
     name <- maybe "" (\(Direct.Utf8 bytes) -> decodeMessage bytes) <$> Direct.columnName statement index
     kind <- Direct.columnType statement index
     value <- case kind of
-      Direct.IntegerColumn -> PInt . toInteger <$> Direct.columnInt64 statement index
-      Direct.FloatColumn -> PFloat <$> Direct.columnDouble statement index
-      Direct.NullColumn -> pure PNone
-      Direct.BlobColumn -> PBytes <$> Direct.columnBlob statement index
+      Direct.IntegerColumn -> PyInt . toInteger <$> Direct.columnInt64 statement index
+      Direct.FloatColumn -> PyFloat <$> Direct.columnDouble statement index
+      Direct.NullColumn -> pure PyNone
+      Direct.BlobColumn -> PyBytes <$> Direct.columnBlob statement index
       Direct.TextColumn -> do
         Direct.Utf8 bytes <- Direct.columnText statement index
         case TE.decodeUtf8' bytes of
-          Right text -> pure (PStr text)
+          Right text -> pure (PyStr text)
           Left _ ->
             raise
               ( pythonError
@@ -422,5 +418,5 @@ readRow statement = do
                   )
               )
     pure (name, value)
-  pure (pyDict members)
+  pure (pythonDict members)
 

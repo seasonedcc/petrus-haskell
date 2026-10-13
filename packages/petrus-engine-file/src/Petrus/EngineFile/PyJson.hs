@@ -20,10 +20,10 @@ module Petrus.EngineFile.PyJson
 
 import Data.ByteString (ByteString)
 import Data.Text (Text)
-import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Petrus.EngineFile.Value (Value (..))
-import Petrus.Json (Json (..), ParseOptions (..), parseJson, pythonJsonLoads)
+import Petrus.Json (Json (..), ParseOptions (..), pythonJsonLoads)
+import Petrus.Json.Python (LoadsRefusal (..), parseOrExplain)
 import Petrus.Json.Python.Scanner qualified as Scanner
 
 -- | Why @json.loads@ refused a document.
@@ -51,15 +51,13 @@ renderPyJsonError = \case
 -- | @json.loads(text)@ for UTF-8 encoded text. The nesting is unbounded,
 -- as the reference's is short of the C stack (DIVERGENCES.md, 1).
 pyLoads :: ByteString -> Either PyJsonError Value
-pyLoads input = case parseJson options input of
+pyLoads input = case parseOrExplain options (Scanner.loads Scanner.defaultHooks) input (TE.decodeUtf8Lenient input) of
   Right json -> Right (fromJson json)
-  Left problem -> Left $ case Scanner.loads Scanner.defaultHooks text of
-    Left (Scanner.DecodeError message position) -> DecodeError (Scanner.decodeErrorText text message position)
-    Left (Scanner.HookError message) -> IntegerTooLong message
-    Right _ -> DecodeError (T.pack problem)
+  Left (LoadsDecodeError text) -> Left (DecodeError text)
+  Left (LoadsHookError message) -> Left (IntegerTooLong message)
+  Left (LoadsBeyondLimits problem) -> Left (DecodeError problem)
   where
     options = pythonJsonLoads {maxNestingDepth = Nothing}
-    text = TE.decodeUtf8Lenient input
 
 fromJson :: Json -> Value
 fromJson = \case

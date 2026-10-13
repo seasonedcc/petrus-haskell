@@ -49,7 +49,7 @@ import Petrus.Json (Json)
 import Petrus.Json qualified as Json
 import Petrus.Json.Limits (maxIntStrDigits)
 import Petrus.Json.Python.JsonRepr (jsonItemsRepr, jsonRepr)
-import Petrus.Json.Python (pythonDoubleRepr, pythonExceptionStr, pythonStrRepr, unicodeEncodeError, utf8EncodeFailure)
+import Petrus.Json.Python (PyNumber (..), pyNumberEq, pythonDoubleRepr, pythonExceptionStr, pythonStrRepr, unicodeEncodeError, utf8EncodeFailure)
 import Petrus.Json.Wtf8 (fromCodePoints)
 
 -- | A Python value of a modeled type. 'PyDict' keeps insertion order and
@@ -70,7 +70,7 @@ data PyValue
 -- never equal each other; dicts compare as mappings.
 pyEq :: PyValue -> PyValue -> Bool
 pyEq left right = case (numeric left, numeric right) of
-  (Just a, Just b) -> numericEq a b
+  (Just a, Just b) -> pyNumberEq a b
   (Just _, Nothing) -> False
   (Nothing, Just _) -> False
   (Nothing, Nothing) -> case (left, right) of
@@ -85,25 +85,13 @@ pyEq left right = case (numeric left, numeric right) of
   where
     sameLength a b = length a == length b
 
-data Number = Exact Integer | Inexact Double
-
-numeric :: PyValue -> Maybe Number
+-- | The number a value is, for @==@ (petrus-json's numeric core).
+numeric :: PyValue -> Maybe PyNumber
 numeric = \case
-  PyBool value -> Just (Exact (if value then 1 else 0))
-  PyInt value -> Just (Exact value)
-  PyFloat value -> Just (Inexact value)
+  PyBool value -> Just (PyExact (if value then 1 else 0))
+  PyInt value -> Just (PyExact value)
+  PyFloat value -> Just (PyInexact value)
   _ -> Nothing
-
-numericEq :: Number -> Number -> Bool
-numericEq (Exact a) (Exact b) = a == b
-numericEq (Inexact a) (Inexact b) = a == b
-numericEq (Exact a) (Inexact b) = exactFloatEq a b
-numericEq (Inexact a) (Exact b) = exactFloatEq b a
-
-exactFloatEq :: Integer -> Double -> Bool
-exactFloatEq integral floating
-  | isNaN floating || isInfinite floating = False
-  | otherwise = toRational floating == fromInteger integral
 
 lookupKey :: PyValue -> [(PyValue, PyValue)] -> Maybe PyValue
 lookupKey key = fmap snd . findFirst (pyEq key . fst)

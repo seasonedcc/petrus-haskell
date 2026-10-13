@@ -47,6 +47,7 @@ import Data.Maybe (isJust, isNothing)
 import GHC.Clock (getMonotonicTime)
 import Petrus.Motus.Execution.Spawn (spawnPiped)
 import System.Directory (removeDirectoryRecursive)
+import Petrus.Posix.Process (exitInt)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory)
 import System.IO (BufferMode (..), Handle, hClose, hSetBinaryMode, hSetBuffering)
@@ -202,11 +203,6 @@ waitExit process seconds = do
             now <- getMonotonicTime
             if now >= end then pure Nothing else threadDelay 2000 >> go
   go
-
-exitInt :: ExitCode -> Int
-exitInt = \case
-  ExitSuccess -> 0
-  ExitFailure n -> n
 
 -- | @subprocess.run(argv, env=environment, capture_output=True,
 -- timeout=10)@: capture stdout and stderr as bytes. The child runs in its

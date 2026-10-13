@@ -17,6 +17,7 @@
 module Petrus.Posix.Path
   ( -- * pathlib
     purePath
+  , purePathParent
   , pathParts
   , pathExpandUser
   , pathResolve
@@ -24,6 +25,7 @@ module Petrus.Posix.Path
   , HomeDirectoryUnknown (..)
 
     -- * os.path
+  , normpath
   , realpath
   , expandUser
 
@@ -84,6 +86,35 @@ formatParts root parts
 -- @"//x"@ keeps both slashes, @".."@ is kept (pathlib never collapses it).
 purePath :: FilePath -> FilePath
 purePath = uncurry formatParts . pathParts
+
+-- | @str(PurePosixPath(path).parent)@, lexically: the path without its
+-- last part (@"a/b/"@ gives @"a"@, @"a"@ gives @"."@), and a root or @"."@
+-- is its own parent.
+purePathParent :: FilePath -> FilePath
+purePathParent path = case pathParts path of
+  (root, []) -> formatParts root []
+  (root, parts) -> formatParts root (init parts)
+
+-- | @os.path.normpath(path)@ (@posixpath@): repeated slashes and @.@ parts
+-- removed and each @..@ collapsed with the part before it, lexically. Two
+-- leading slashes are kept (three or more become one), a @..@ at the root
+-- is dropped and a relative path keeps its leading @..@ parts; an empty
+-- result is @"."@. Only @/@ and @.@ are inspected, so the result is exact
+-- for the 'Data.ByteString.Char8' spelling of a byte path as well.
+normpath :: FilePath -> FilePath
+normpath "" = "."
+normpath path = if null joined then "." else joined
+  where
+    initial = case path of
+      '/' : '/' : '/' : _ -> "/"
+      '/' : '/' : _ -> "//"
+      '/' : _ -> "/"
+      _ -> ""
+    joined = initial ++ intercalate "/" (reverse (foldl' step [] (splitSlash path)))
+    step kept part
+      | null part || part == "." = kept
+      | part /= ".." || (null initial && null kept) || take 1 kept == [".."] = part : kept
+      | otherwise = drop 1 kept
 
 -- | @os.path.expanduser(path)@: a leading @~@ is replaced by @$HOME@ (or the
 -- password database entry for the real uid when @HOME@ is unset) and @~user@

@@ -14,9 +14,10 @@ import Hamsterdan.Agents.Protocol (AgentCleanupCategory, AgentResultCategory (Ou
 import Hamsterdan.Agents.Protocol qualified as Agents
 import Hamsterdan.Contracts.Codec (Contract (..), encode)
 import Hamsterdan.Contracts.Readiness (ChangeResult (..))
-import Hamsterdan.Python.Object (PV (..), pythonError)
+import Hamsterdan.Python.Object (PyObject (..), pythonError)
 import Hamsterdan.Host.GitPublish (GitPublishError (..), PublicationCategory (GitOperation, Idempotency, PatchAdmission, RefCas), categoryName)
 import Hamsterdan.Host.PublicationQualification
+import Hamsterdan.Host.Python (RuntimeError (..), ValueError (..))
 import Petrus.Json (Json (..))
 import Petrus.Posix.At (FileStat (..), Follow (..), isDirectory, permissionBits)
 import Petrus.Posix.At qualified as At
@@ -142,19 +143,19 @@ spec = describe "tests/unit/host/test_publication_qualification.py" do
     state.originalCategory `shouldBe` Just RefCas
     state.replayCategory `shouldBe` Nothing
     publicationSanitized state
-      `shouldEqualPy` PDict
-        [ ("accepted", PBool False)
-        , ("original_publications", PInt 0)
-        , ("agent_result_category", PStr "")
-        , ("agent_cleanup_category", PStr "")
-        , ("original_category", PStr "ref_cas")
-        , ("publication_assertions_allowed", PBool False)
-        , ("schema_assertion", PNone)
-        , ("tree_assertion", PNone)
-        , ("replay_assertion", PNone)
-        , ("replay_category", PStr "")
-        , ("cleanup_verified", PNone)
-        , ("cleanup_category", PStr "")
+      `shouldEqualPy` PyDict
+        [ ("accepted", PyBool False)
+        , ("original_publications", PyInt 0)
+        , ("agent_result_category", PyStr "")
+        , ("agent_cleanup_category", PyStr "")
+        , ("original_category", PyStr "ref_cas")
+        , ("publication_assertions_allowed", PyBool False)
+        , ("schema_assertion", PyNone)
+        , ("tree_assertion", PyNone)
+        , ("replay_assertion", PyNone)
+        , ("replay_category", PyStr "")
+        , ("cleanup_verified", PyNone)
+        , ("cleanup_category", PyStr "")
         ]
 
   it "test_success_runs_assertions_and_one_replay_without_overwriting_original" do
@@ -180,7 +181,7 @@ spec = describe "tests/unit/host/test_publication_qualification.py" do
         state.agentResultCategory `shouldBe` Just category
         state.originalCategory `shouldBe` Nothing
         case publicationSanitized state of
-          PDict members -> lookup "agent_result_category" members `shouldSatisfy` maybe False (\v -> show v == show (PStr (wire category)))
+          PyDict members -> lookup "agent_result_category" members `shouldSatisfy` maybe False (\v -> show v == show (PyStr (wire category)))
           _ -> expectationFailure "not a dict"
 
   it "test_agent_result_first_cause_and_cleanup_uncertainty_remain_separate" do
@@ -216,10 +217,10 @@ spec = describe "tests/unit/host/test_publication_qualification.py" do
     forM_ (zip [0 :: Int ..] effects) \(index, effect) ->
       it ("effect" <> show index) do
         evidence <- newPublicationQualification
-        recordOriginal evidence effect 0 `shouldThrow` \(QualificationError _ message) -> "closed vocabulary" `T.isInfixOf` message
+        recordOriginal evidence effect 0 `shouldThrow` \(ValueError message) -> "closed vocabulary" `T.isInfixOf` message
 
   it "test_inconsistent_or_repeated_original_and_cleanup_evidence_is_rejected" do
-    let raises needle (QualificationError cls message) = cls == "ValueError" && needle `T.isInfixOf` message
+    let raises needle (ValueError message) = needle `T.isInfixOf` message
     evidence <- newPublicationQualification
     recordOriginal evidence (changeResult False "" "" "") 0 `shouldThrow` raises "lacks a closed category"
     fresh <- newPublicationQualification
@@ -237,10 +238,10 @@ spec = describe "tests/unit/host/test_publication_qualification.py" do
     -- The non-boolean callback result and the non-boolean @ok@ cannot be
     -- written (TypeGuaranteeSpec); the one-shot rule still holds after a
     -- first run that raised part-way.
-    let raises needle (QualificationError _ message) = needle `T.isInfixOf` message
+    let raises needle (ValueError message) = needle `T.isInfixOf` message
     evidence <- newPublicationQualification
     recordOriginal evidence (changeResult True "" "" "") 1
-    runPublicationAssertions evidence (throwIO (QualificationError "ValueError" "publication assertions must be boolean")) (pure True) (pure True)
+    runPublicationAssertions evidence (throwIO (ValueError "publication assertions must be boolean")) (pure True) (pure True)
       `shouldThrow` raises "must be boolean"
     runPublicationAssertions evidence (pure True) (pure True) (pure True) `shouldThrow` raises "already started"
     publicationAccepted <$> snapshot evidence `shouldReturn` False
@@ -253,7 +254,7 @@ spec = describe "tests/unit/host/test_publication_qualification.py" do
       readIORef commands
         `shouldReturn` [["git", "push", "--atomic", target, a40 <> ":refs/heads/main", b40 <> ":refs/heads/hamsterdan/ds11-live-v4"]]
       (outcome.commandSucceeded, outcome.attempted, outcome.category) `shouldBe` (True, True, Nothing)
-      pushSanitized outcome `shouldEqualPy` PDict [("attempted", PBool True), ("command_succeeded", PBool True), ("category", PStr "")]
+      pushSanitized outcome `shouldEqualPy` PyDict [("attempted", PyBool True), ("command_succeeded", PyBool True), ("category", PyStr "")]
       marker <- At.statAt Nothing (root </> "push-spent") NoFollowLinks
       (marker.statMode `mod` 0o1000) `shouldBe` 0o600
 

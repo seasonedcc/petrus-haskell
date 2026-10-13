@@ -3,8 +3,14 @@
 --
 -- This is the one Python value model of the port: the arguments of a
 -- 'Petrus.Json.Python.Exception.PythonException', the inputs a pydantic
--- @ValidationError@ quotes ("Petrus.Json.Python.Pydantic"), and what
--- @json.loads@ builds ('fromJson', 'pythonRepr').
+-- @ValidationError@ quotes ("Petrus.Json.Python.Pydantic"), what
+-- @json.loads@ builds ('fromJson', 'pythonRepr'), and the dynamic values
+-- Hamsterdan's exporter and operator read (@Hamsterdan.Python.Object.PV@
+-- is a synonym for it, as petrus-impetus's validation @PV@ is). Two
+-- narrower models stay apart on purpose and share 'pyNumberEq', the
+-- numeric core of '==': petrus-engine-file's @Value@ (jiter's duplicate
+-- keys and NaN identity) and Hamsterdan's @PyLiteral@ (what
+-- @ast.literal_eval@ returns, non-@str@ keys and sets included).
 module Petrus.Json.Python.Object
   ( PyObject (..)
   , fromJson
@@ -12,6 +18,11 @@ module Petrus.Json.Python.Object
   , pyRepr
   , pyStr
   , pyTypeName
+  , pyTruthy
+  , pyEq
+  , PyNumber (..)
+  , pyNumber
+  , pyNumberEq
   , pythonRepr
   , pythonStr
   , failureArgumentText
@@ -19,6 +30,7 @@ module Petrus.Json.Python.Object
 
 import Control.DeepSeq (NFData (..))
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Petrus.Json.Limits (maxIntStrDigits)
@@ -130,6 +142,73 @@ pyType = \case
   PyDict _ -> ("builtins", "dict")
   PySlice {} -> ("builtins", "slice")
   PyInstance modul qualname _ -> (modul, qualname)
+
+-- | @bool(x)@: @None@, zero and empty containers are false. A slice is
+-- true, as is an opaque instance ('PyInstance'), whose own @__bool__@ or
+-- @__len__@ this model does not carry (@object@'s default is true).
+pyTruthy :: PyObject -> Bool
+pyTruthy = \case
+  PyNone -> False
+  PyBool b -> b
+  PyInt i -> i /= 0
+  PyFloat d -> d /= 0
+  PyStr s -> not (T.null s)
+  PyBytes b -> not (BS.null b)
+  PyList items -> not (null items)
+  PyTuple items -> not (null items)
+  PyDict members -> not (null members)
+  PySlice {} -> True
+  PyInstance {} -> True
+
+-- | @left == right@ between objects built separately: numbers compare by
+-- value across @bool@, @int@ and @float@ ('pyNumberEq'), NaN equals
+-- nothing, a list never equals a tuple, and dicts compare as mappings. An
+-- opaque instance ('PyInstance') equals nothing: its own @__eq__@ is not
+-- part of this model, and two distinct objects without one are unequal.
+pyEq :: PyObject -> PyObject -> Bool
+pyEq left right = case (pyNumber left, pyNumber right) of
+  (Just a, Just b) -> pyNumberEq a b
+  (Just _, Nothing) -> False
+  (Nothing, Just _) -> False
+  (Nothing, Nothing) -> case (left, right) of
+    (PyNone, PyNone) -> True
+    (PyStr a, PyStr b) -> a == b
+    (PyBytes a, PyBytes b) -> a == b
+    (PyList as, PyList bs) -> pairwise as bs
+    (PyTuple as, PyTuple bs) -> pairwise as bs
+    (PyDict as, PyDict bs) ->
+      length as == length bs && all (\(k, v) -> maybe False (pyEq v) (lookup k bs)) as
+    (PySlice a b c, PySlice a' b' c') -> (a, b, c) == (a', b', c')
+    _ -> False
+  where
+    pairwise as bs = length as == length bs && and (zipWith pyEq as bs)
+
+-- | A number as @==@ compares it: an @int@ (or @bool@) exactly, a @float@
+-- by its value.
+data PyNumber = PyExact Integer | PyInexact Double
+
+-- | The number an object is (a @bool@, @int@ or @float@).
+pyNumber :: PyObject -> Maybe PyNumber
+pyNumber = \case
+  PyBool b -> Just (PyExact (if b then 1 else 0))
+  PyInt i -> Just (PyExact i)
+  PyFloat d -> Just (PyInexact d)
+  _ -> Nothing
+
+-- | CPython's numeric @==@: an @int@ and a @float@ compare exactly (no
+-- rounding of either side), NaN equals nothing and an infinity equals no
+-- @int@. The one numeric core of every Python value model of the port
+-- (this one, the @ast.literal_eval@ values of
+-- @Hamsterdan.PyLiteral@ and the engine-file loader's values).
+pyNumberEq :: PyNumber -> PyNumber -> Bool
+pyNumberEq (PyExact a) (PyExact b) = a == b
+pyNumberEq (PyInexact a) (PyInexact b) = a == b
+pyNumberEq (PyExact a) (PyInexact b) = exactFloatEq a b
+pyNumberEq (PyInexact a) (PyExact b) = exactFloatEq b a
+
+exactFloatEq :: Integer -> Double -> Bool
+exactFloatEq integral floating =
+  not (isNaN floating || isInfinite floating) && toRational floating == fromInteger integral
 
 -- | @repr(value)@ of the Python object @json.loads@ builds for a value.
 pythonRepr :: Json -> Text

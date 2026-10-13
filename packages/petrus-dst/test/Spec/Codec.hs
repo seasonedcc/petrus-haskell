@@ -30,7 +30,7 @@ vectors = readJson (dataFile "codec-vectors.json")
 -- | The refusal of a lone surrogate in an object key, which CPython admits
 -- (see DIVERGENCES.md).
 surrogateKeyRefusal :: Text
-surrogateKeyRefusal = "invalid strict DST JSON: the payload contains a lone UTF-16 surrogate in an object key, which this port cannot represent"
+surrogateKeyRefusal = "invalid strict DST JSON: the payload contains a lone UTF-16 surrogate in an object key, which the reference's pydantic re-encoding rewrites"
 
 -- | Compare one decode outcome with a Python verdict; 'Nothing' when they
 -- agree.

@@ -31,6 +31,7 @@ import Petrus.EngineFile.PyText (joinPath, parentPath, pathText, purePath, readT
 import Petrus.EngineFile.Types
 import Petrus.EngineFile.Validate
 import Petrus.EngineFile.Value
+import Petrus.Json (pythonDict)
 import Petrus.Json.Python.Exception (PythonException, pythonError)
 import Petrus.Json.PythonText (pythonStrRepr)
 
@@ -81,7 +82,7 @@ mountedSources source = case source of
 mountedDict :: Value -> [(Text, Value)] -> Either PythonException [(NetPath, FlatNetFile)]
 mountedDict root deps = runIdentity (mountedWith True (Identity (readDictNet root)) (Identity . child))
   where
-    child ref = case lookup ref (pyDict deps) of
+    child ref = case lookup ref (pythonDict deps) of
       Just value | not (isNull value) -> readDictNet value
       _ -> Left (pythonError "ValueError" ("Unknown ref: " <> pythonStrRepr ref))
     isNull = \case

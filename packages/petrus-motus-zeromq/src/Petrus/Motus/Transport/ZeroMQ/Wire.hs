@@ -60,7 +60,7 @@ import Data.Text.Encoding qualified as TE
 import Petrus.Activity
 import Petrus.Json
 import Petrus.Motus.Dispatch (ActivityAttempt, AttemptFailure (..), activityAttempt)
-import Petrus.Json.Python (decodeUtf8Python, pythonStrListRepr)
+import Petrus.Json.Python (LoadsRefusal (..), decodeUtf8Python, parseOrExplain, pythonStrListRepr)
 import Petrus.Json.Python.Scanner qualified as Scanner
 import Petrus.Motus.PythonException (pythonException, pythonExceptionRepr)
 import Petrus.Motus.PythonException qualified as Python (PythonException (..))
@@ -321,13 +321,12 @@ encodeMessage v = case dumps compact {sortKeys = True} v of
 decodeMessage :: ByteString -> Either WireError [(Text, Json)]
 decodeMessage bytes = case decodeUtf8Python bytes of
   Left problem -> invalidJson problem
-  Right text -> case parseJson surrogateRefusingLoads bytes of
+  Right text -> case parseOrExplain surrogateRefusingLoads (Scanner.loads Scanner.defaultHooks) bytes text of
     Right (Object members) -> Right members
     Right _ -> value "ZeroMQ Dispatch message must be a JSON object"
-    Left problem -> case Scanner.loads Scanner.defaultHooks text of
-      Left (Scanner.DecodeError message position) -> invalidJson (Scanner.decodeErrorText text message position)
-      Left (Scanner.HookError digitLimit) -> value digitLimit
-      Right _ -> invalidJson (T.pack problem)
+    Left (LoadsDecodeError problem) -> invalidJson problem
+    Left (LoadsHookError digitLimit) -> value digitLimit
+    Left (LoadsBeyondLimits problem) -> invalidJson problem
   where
     invalidJson problem = value ("invalid ZeroMQ Dispatch JSON message: " <> problem)
 

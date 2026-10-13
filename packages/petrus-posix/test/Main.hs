@@ -239,6 +239,16 @@ pathSpec = describe "Path" $ do
     expected <- pythonStrings "str(PurePosixPath(p))" "/" inputs
     map purePath inputs `shouldBe` expected
 
+  it "takes the parent like PurePosixPath.parent and normalizes like os.path.normpath" $ do
+    let inputs =
+          [ "", ".", "./", "..", "../..", "a", "a/", "a//b", "a/./b/.", "a/../b", "a/b/../..", "a/b/../../..", "../a/.."
+          , "/", "//", "///", "////a", "//a//b", "//..", "/../a", "/a/../../b", "...", "./.a", "~", "é/./ü//", ".a/..b/"
+          ]
+    expectedParents <- pythonStrings "str(PurePosixPath(p).parent)" "/" inputs
+    map purePathParent inputs `shouldBe` expectedParents
+    expectedNormalized <- pythonStrings "os.path.normpath(p)" "/" inputs
+    map normpath inputs `shouldBe` expectedNormalized
+
   it "resolves exactly like Path.resolve (symlinks, .., loops, missing tails)" $ withTemp $ \dir -> do
     createDirectory (dir </> "dir")
     createDirectory (dir </> "é")
@@ -369,6 +379,20 @@ atSpec = describe "At" $ do
           listDirectoryFd a `shouldReturn` []
       removeDirectoryAt (Just root) "a"
       listDirectory dir `shouldReturn` ["b"]
+
+  it "hard-links like os.link, following a symlinked source unless asked not to" $ withTemp $ \dir -> do
+    BS.writeFile (dir </> "file") "data"
+    createFileLink "file" (dir </> "link")
+    bracket (openDirectoryAt Nothing dir) closeFd $ \root -> do
+      linkAt (Just root) "link" (Just root) "followed" FollowLinks
+      linkAt Nothing (dir </> "link") Nothing (dir </> "itself") NoFollowLinks
+      original <- statAt (Just root) "file" NoFollowLinks
+      followed <- statAt (Just root) "followed" NoFollowLinks
+      itself <- statAt (Just root) "itself" NoFollowLinks
+      (statInode followed, statLinkCount followed, isSymbolicLink itself)
+        `shouldBe` (statInode original, 2, True)
+      linkAt (Just root) "file" (Just root) "followed" FollowLinks `shouldThrow` isAlreadyExistsError
+      linkAt (Just root) "missing" (Just root) "new" FollowLinks `shouldThrow` isDoesNotExistError
 
   it "changes permissions on a descriptor" $ withTemp $ \dir -> do
     fd <- createExclusiveAt Nothing (dir </> "f") 0o600

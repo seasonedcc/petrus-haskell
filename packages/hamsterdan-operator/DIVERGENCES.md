@@ -84,7 +84,11 @@ Below are the differences that remain, with their rationale.
   leaves the bounded child environment, and it never reaches the output.
 - **`RuntimeError` and the other exceptions the setup sequence catches**
   are `PythonException` values carrying the reference's class name. The sequence
-  turns them into the same evidence categories.
+  turns them into the same evidence categories. The publication
+  qualification raises and catches the same shared model: its `ValueError`
+  and `RuntimeError` are `Hamsterdan.Host.Python`'s (petrus-motus's
+  `IsPythonException` types, whose `str()` is the reference's), not a
+  qualification-local exception type.
 - **JSON fast path.** Provider answers go through `json.loads` as
   petrus-json's `loadsText` reads a `str`. A document in the common subset
   of JSON (no floats, no repeated keys, no surrogates) is read in place
@@ -98,7 +102,9 @@ Below are the differences that remain, with their rationale.
 - **Plain system calls.** `shutil.which` is ported directly
   (`Hamsterdan.Operator.Posix.which`: the same `PATH` walk, petrus-posix's
   `os.confstr("CS_PATH")` when `PATH` is unset, one `stat`, one
-  `access(X_OK)` and the directory check).
+  `access(X_OK)` and the directory check). `os.path.normpath` and
+  `PurePosixPath(...).parent` are petrus-posix's (`Petrus.Posix.Path`),
+  checked there against CPython.
   `Path.write_text` is one `open`/`write`/`close`. Neither goes through
   GHC's `Handle` layer or the `directory` package's permission probes.
   The cleanup's `shutil.rmtree` is CPython's descriptor-relative walk

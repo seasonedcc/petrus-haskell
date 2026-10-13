@@ -36,33 +36,33 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Hamsterdan.Python.Object (PV (..), pyEq)
+import Hamsterdan.Python.Object (PV, PyObject (..), pyEq)
 import Hamsterdan.Operator
 import Hamsterdan.Operator.Python (dumpsPlain)
 import Test.Hspec
 
 obj :: [(Text, PV)] -> PV
-obj = PDict
+obj = PyDict
 
 str :: Text -> PV
-str = PStr
+str = PyStr
 
 int :: Integer -> PV
-int = PInt
+int = PyInt
 
 bool :: Bool -> PV
-bool = PBool
+bool = PyBool
 
 none :: PV
-none = PNone
+none = PyNone
 
 list :: [PV] -> PV
-list = PList
+list = PyList
 
 -- | @value[key]@ for a test value known to be a dict.
 at :: Text -> PV -> PV
 at key = \case
-  PDict members -> maybe (error ("missing key " <> T.unpack key)) id (lookup key members)
+  PyDict members -> maybe (error ("missing key " <> T.unpack key)) id (lookup key members)
   other -> error ("not a dict: " <> show other)
 
 atPath :: [Text] -> PV -> PV
@@ -70,8 +70,8 @@ atPath keys value = foldl (flip at) value keys
 
 -- | @left | right@ for dicts.
 merge :: PV -> [(Text, PV)] -> PV
-merge (PDict members) extra =
-  PDict ([(k, maybe v id (lookup k extra)) | (k, v) <- members] <> [(k, v) | (k, v) <- extra, k `notElem` map fst members])
+merge (PyDict members) extra =
+  PyDict ([(k, maybe v id (lookup k extra)) | (k, v) <- members] <> [(k, v) | (k, v) <- extra, k `notElem` map fst members])
 merge other _ = error ("not a dict: " <> show other)
 
 -- | @value[k1][k2]...[kn] = new@.
@@ -137,7 +137,7 @@ completed value code =
   Completed
     { returncode = code
     , stdout = case value of
-        PStr s -> s
+        PyStr s -> s
         other -> encoded other
     , stderr = "sensitive stderr must never be emitted"
     }

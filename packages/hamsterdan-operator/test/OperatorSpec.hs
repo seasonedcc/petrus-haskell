@@ -26,7 +26,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Petrus.Argparse (parser)
 import Petrus.Argparse.Parser (Action (..), Behavior (..), Formatting (..), Outcome (..), Parser (..), lookupBool, lookupText, parseArgs, plainTheme)
-import Hamsterdan.Python.Object (PV (..), pyEq, toJson, truthy)
+import Hamsterdan.Python.Object (PV, PyObject (..), pyEq, toJson, pyTruthy)
 import Hamsterdan.GitHub.Gateway (derivePolicy)
 import Hamsterdan.Operator
 import Petrus.Json (Json (..))
@@ -119,17 +119,17 @@ repoPath suffix = "/repos/" <> repository <> suffix
 
 checkNamed :: Text -> PV -> PV
 checkNamed name result = case at "checks" result of
-  PList checks -> maybe (error ("no check " <> T.unpack name)) id (find (\c -> pyEq (at "name" c) (str name)) checks)
+  PyList checks -> maybe (error ("no check " <> T.unpack name)) id (find (\c -> pyEq (at "name" c) (str name)) checks)
   _ -> error "checks"
 
 checksOf :: PV -> [PV]
 checksOf result = case at "checks" result of
-  PList checks -> checks
+  PyList checks -> checks
   _ -> []
 
 isTrue, isFalse :: PV -> Bool
-isTrue = \case PBool True -> True; _ -> False
-isFalse = \case PBool False -> True; _ -> False
+isTrue = \case PyBool True -> True; _ -> False
+isFalse = \case PyBool False -> True; _ -> False
 
 sha :: Char -> Text
 sha = T.replicate 40 . T.singleton
@@ -243,7 +243,7 @@ dropLastComment :: Fake -> IO ()
 dropLastComment fake = do
   comments <- getResponse fake issueComments
   case comments of
-    PList items -> setResponse fake issueComments (Value (list (take (length items - 1) items)))
+    PyList items -> setResponse fake issueComments (Value (list (take (length items - 1) items)))
     _ -> error "comments"
 
 -- ---------------------------------------------------------------------------
@@ -465,7 +465,7 @@ spec = describe "tests/unit/test_operator.py" do
         flake = value "first-attempt-flake"
         hero = value "hero-review"
     case clean of
-      PDict members -> Set.fromList (map fst members) `shouldBe` Set.fromList ["schema_version", "scenario", "behavior", "review_lenses"]
+      PyDict members -> Set.fromList (map fst members) `shouldBe` Set.fromList ["schema_version", "scenario", "behavior", "review_lenses"]
       _ -> expectationFailure "not a dict"
     at "behavior" clean `shouldEqualPy` obj [("kind", str "pass")]
     at "behavior" flake `shouldEqualPy` obj [("kind", str "first_attempt_flake"), ("fingerprint", str "scenario:first-attempt-flake:v1")]
@@ -504,7 +504,7 @@ spec = describe "tests/unit/test_operator.py" do
         )
     result <- preflight (testOperator fake) Nothing
     at "ok" result `shouldSatisfy` isFalse
-    Set.fromList [n | item <- checksOf result, not (truthy (at "pass" item)), PStr n <- [at "name" item]]
+    Set.fromList [n | item <- checksOf result, not (pyTruthy (at "pass" item)), PyStr n <- [at "name" item]]
       `shouldBe` Set.fromList ["repository_identity", "default_broker"]
 
   it "test_prepared_broker_is_detected_without_clone_or_mutation" do
@@ -602,7 +602,7 @@ spec = describe "tests/unit/test_operator.py" do
         , ("authenticated_committer", str appBotLogin)
         ]
     case at "markers" result of
-      PList markers -> map (at "type") markers `shouldSatisfy` (\types -> pyEq (list types) (list (map str ["hamsterdan-rerun", "readiness", "impetus-rerun"])))
+      PyList markers -> map (at "type") markers `shouldSatisfy` (\types -> pyEq (list types) (list (map str ["hamsterdan-rerun", "readiness", "impetus-rerun"])))
       _ -> expectationFailure "markers"
     checkNamed "legacy_markers_absent" result `shouldEqualPy` obj [("name", str "legacy_markers_absent"), ("pass", bool False), ("observed", int 1)]
     at "pass" (checkNamed "dashboard_present" result) `shouldSatisfy` isTrue
@@ -633,10 +633,10 @@ spec = describe "tests/unit/test_operator.py" do
       )
     result <- inspect (testOperator fake) 7 defaultInspectOptions
     at "ok" result `shouldSatisfy` isTrue
-    all (truthy . at "pass") (checksOf result) `shouldBe` True
+    all (pyTruthy . at "pass") (checksOf result) `shouldBe` True
     encoded result `shouldNotSatisfy` T.isInfixOf "SECRET INLINE PROSE"
     case at "comments" result of
-      PList comments -> any (\c -> pyEq (at "type" c) (str "finding") && truthy (at "inline" c)) comments `shouldBe` True
+      PyList comments -> any (\c -> pyEq (at "type" c) (str "finding") && pyTruthy (at "inline" c)) comments `shouldBe` True
       _ -> expectationFailure "comments"
 
   it "test_hero_inspection_proves_three_native_shapes_without_exposing_prose" do
@@ -722,7 +722,7 @@ spec = describe "tests/unit/test_operator.py" do
             , "<!-- hamsterdan:finding operation=findings:" <> hd <> ":i1 head=" <> hd <> " -->"
             ]
         kept = case comments of
-          PList items -> [c | c@(PDict _) <- items, any (pyEq (at "id" c)) [int 3, int 6]]
+          PyList items -> [c | c@(PyDict _) <- items, any (pyEq (at "id" c)) [int 3, int 6]]
           _ -> []
     setResponse
       fake
@@ -742,9 +742,9 @@ spec = describe "tests/unit/test_operator.py" do
       )
     result <- inspect (testOperator fake) 7 defaultInspectOptions {expectHeroReview = True, expectReadiness = False}
     at "ok" result `shouldSatisfy` isTrue
-    all (truthy . at "pass") (checksOf result) `shouldBe` True
+    all (pyTruthy . at "pass") (checksOf result) `shouldBe` True
     let finding = case at "comments" result of
-          PList items -> maybe (error "no finding") id (find (\c -> pyEq (at "type" c) (str "finding")) items)
+          PyList items -> maybe (error "no finding") id (find (\c -> pyEq (at "type" c) (str "finding")) items)
           _ -> error "comments"
     finding
       `shouldEqualPy` obj
@@ -802,7 +802,7 @@ spec = describe "tests/unit/test_operator.py" do
   it "test_authority_inspection_distinguishes_approval_and_conflict" do
     approved <- authorityRunner
     modify approved reviewsPath \case
-      PList items -> list (take (length items - 1) items <> [merge (last items) [("state", str "APPROVED")]])
+      PyList items -> list (take (length items - 1) items <> [merge (last items) [("state", str "APPROVED")]])
       other -> other
     modify approved "graphql" (setPath ["data", "repository", "pullRequest", "reviewDecision"] (str "APPROVED"))
     approvedResult <- inspectAuthority (testOperator approved) 9 "required-approval"

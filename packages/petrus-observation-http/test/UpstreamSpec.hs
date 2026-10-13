@@ -6,7 +6,8 @@
 module UpstreamSpec (spec) where
 
 import Control.Exception (bracket, throwIO)
-import Control.Monad (forM_)
+import Control.Monad (forM_, when)
+import Data.IORef (newIORef, readIORef, writeIORef)
 import Network.Socket (Family (..), SockAddr (..), SocketType (..), close, connect, defaultProtocol, socket, tupleToHostAddress)
 import Network.Socket.ByteString (sendAll)
 import Petrus.Engine (EngineError (..))
@@ -15,6 +16,10 @@ import Data.ByteString.Char8 qualified as BC
 import Data.Set qualified as Set
 import GHC.Conc (listThreads)
 import Petrus.Engine qualified as Engine
+import Petrus.Engine.Provider (EngineResources (..), OpenMode (..), defaultResources, openEngine)
+import Petrus.Impetus.HistoryStore (inMemoryHistoryStore)
+import Petrus.Impetus.Petrinet (Token (..), markingFromList)
+import Petrus.Motus.Dispatch.InMemory (inMemoryDispatch, newInMemoryDispatch)
 import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, parseJson, strictLoads)
 import Petrus.Observation.Engine qualified as Observe
 import Petrus.Observation.Http
@@ -146,6 +151,27 @@ profileSpec = describe "spec/observation-protocol-v1.md, HTTP transport profile"
       outcome <- Engine.advance engine
       outcome.ready `shouldBe` True
       replyStatus <$> request port "GET" "/v1/history?after=0&limit=1000" `shouldReturn` 200
+    Engine.close engine
+  it "a poisoned Engine is a 503 on every read door, as a closed one is" $ do
+    -- The poisoning of test_observation.py's
+    -- test_joined_commit_failure_poisons_observation_and_hides_uncommitted_frontier:
+    -- a commit hook that refuses once armed.
+    store <- inMemoryHistoryStore
+    dispatch <- inMemoryDispatch <$> newInMemoryDispatch
+    refusing <- newIORef False
+    let commitHook = readIORef refusing >>= \armed -> when armed (throwIO (EngineRuntimeError "commit refused"))
+        options = Engine.defaultEngineOptions {Engine.marking = markingFromList [(a, [Token (Just "value") (Object [("n", Int 1)])])]}
+    engine <- openEngine CreateInstance observationNet "http-poison" store dispatch options defaultResources {commit = Just commitHook}
+    withObservation engine $ \port -> do
+      replyStatus <$> request port "GET" "/v1/snapshot" `shouldReturn` 200
+      writeIORef refusing True
+      Engine.advance engine `shouldThrow` \case
+        EngineRuntimeError message -> message == "commit refused"
+        _ -> False
+      forM_ ["/v1/snapshot", "/v1/document", "/v1/history?after=0&limit=1"] $ \target -> do
+        reply <- request port "GET" target
+        (replyStatus reply, replyBody reply)
+          `shouldBe` (503, "{\"error\":{\"code\":\"engine_unavailable\",\"message\":\"Engine is unavailable\"}}")
     Engine.close engine
   it "unexpected failures are generic 500 responses without exception details" $ do
     let secret = ObservationDoors (throwIO (userError "secret detail")) (throwIO (EngineTypeError "secret detail")) (\_ _ -> throwIO (EngineHandlerFailed "secret detail"))

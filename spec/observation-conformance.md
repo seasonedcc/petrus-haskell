@@ -85,8 +85,10 @@ reference's member for member, int and float spelling included.
   `frontier` and `current`; `frontier` is the exclusive History length
   captured atomically with the current state. *(`through the Engine (…) ›
   the Engine's coherence › a snapshot blocks between a writer's append and
-  projection, then sees the coherent after state`; `observation (…) › pages
-  a captured frontier while History keeps appending`)*
+  projection, then sees the coherent after state`; `… › a document read
+  blocks between a writer's append and projection, then sees the coherent
+  after state (beyond upstream)`; `observation (…) › pages a captured
+  frontier while History keeps appending`)*
 - **O-007** `projection` §Snapshot. The definition has `name`, exactly
   `time_domain: "integer"`, path-sorted `places` and `transitions`,
   authored-order `arcs` and `completion`; each arc carries its zero-based
@@ -224,9 +226,11 @@ reference's member for member, int and float spelling included.
   the strict shape and JSON is compact, sorted and exactly sized`;
   `unexpected failures are generic 500 responses without exception details`;
   `test_observation_http.py › test_unknown_route_options_and_closed_engine`
-  (503 from a closed Engine); `byte-identical to the upstream server › over
-  read doors that fail (500, 503, 500)`; `Python urllib clients against the
-  Haskell server › see 503 from a closed Engine`)*
+  (503 from a closed Engine); `spec/observation-protocol-v1.md, HTTP
+  transport profile › a poisoned Engine is a 503 on every read door, as a
+  closed one is`; `byte-identical to the upstream server › over read doors
+  that fail (500, 503, 500)`; `Python urllib clients against the Haskell
+  server › see 503 from a closed Engine`)*
 - **O-028** `http` §HTTP profile. A disconnected requester does not affect
   Engine execution. *(`spec/observation-protocol-v1.md, HTTP transport
   profile › a disconnected requester does not affect Engine execution`)*
@@ -250,11 +254,4 @@ has a check of its own:
 
 ## Gaps
 
-- O-006 for the document: the coherence example blocks a snapshot between
-  a writer's append and its projection. The document goes through the same
-  guarded read door (O-014 checks that it refuses a poisoned or closed
-  Engine), but no example blocks a document read the same way.
-- O-027 for a poisoned Engine over HTTP: the 503 is checked for a closed
-  Engine. A poisoned Engine's read door raises the same `RuntimeError`
-  class (O-014), which the adapter maps by type, but no HTTP example
-  poisons an Engine.
+None.

@@ -37,7 +37,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Fakes qualified
 import GHC.Clock (getMonotonicTime)
-import Hamsterdan.Python.Object (PV (..), dumpsLine)
+import Hamsterdan.Python.Object (PV, PyObject (..), dumpsLine)
 import Hamsterdan.Operator
 import Petrus.Json (Json (..), compact, dumps)
 import Petrus.TestSupport.Python (upstreamPythonExecutable)
@@ -349,7 +349,7 @@ haskellWorkload sides name = case name of
     raw <- evaluate (TE.encodeUtf8 refsProjection)
     pure do
       refs <- either (fail . show) pure (parseSetupRefs raw)
-      pure (PDict [(reference, PStr hash) | (reference, hash) <- refs])
+      pure (PyDict [(reference, PyStr hash) | (reference, hash) <- refs])
   "setup" -> do
     answers <- table (setupAnswers sides.git sides.gh)
     prepareSetup sides.setupPrivate
@@ -363,14 +363,18 @@ haskellWorkload sides name = case name of
 -- encoding it is not part of either side's timed region).
 forced :: PV -> Int
 forced = \case
-  PNone -> 0
-  PBool b -> fromEnum b
-  PInt n -> fromInteger (n `mod` 2)
-  PFloat d -> if d > 0 then 1 else 0
-  PStr t -> T.length t
-  PBytes b -> BS.length b
-  PList items -> foldl' (\acc item -> acc + forced item) 0 items
-  PDict members -> foldl' (\acc (key, item) -> acc + T.length key + forced item) 0 members
+  PyNone -> 0
+  PyBool b -> fromEnum b
+  PyInt n -> fromInteger (n `mod` 2)
+  PyFloat d -> if d > 0 then 1 else 0
+  PyStr t -> T.length t
+  PyBytes b -> BS.length b
+  PyList items -> foldl' (\acc item -> acc + forced item) 0 items
+  PyDict members -> foldl' (\acc (key, item) -> acc + T.length key + forced item) 0 members
+  PyTuple items -> foldl' (\acc item -> acc + forced item) 0 items
+  -- not built by json.loads or sqlite3
+  PySlice {} -> 0
+  PyInstance {} -> 0
 
 -- ---------------------------------------------------------------------------
 -- Running

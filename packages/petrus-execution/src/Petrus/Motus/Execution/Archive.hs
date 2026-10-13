@@ -1,4 +1,3 @@
-{-# LANGUAGE CApiFFI #-}
 
 -- | Supported bounded workspace-archive transfer helpers
 -- (@petrus.motus.execution.archive@).
@@ -47,9 +46,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word8)
-import Foreign.C.Error (Errno (..), eEXIST, eNOENT, errnoToIOError, getErrno, throwErrnoIfMinus1Retry)
-import Foreign.C.String (CString)
-import Foreign.C.Types (CInt (..), CSize (..))
+import Foreign.C.Error (Errno (..), eEXIST, eNOENT)
+import Foreign.C.Types (CInt (..))
 import Foreign.Marshal.Utils (copyBytes, fillBytes)
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import GHC.IO.Exception (IOException (..))
@@ -59,6 +57,8 @@ import Petrus.Motus.Execution.Error
 import Petrus.Motus.Execution.Internal.PosixPath
 import Petrus.Motus.Execution.Internal.PyText
 import Petrus.Json.Python (fsDecode, pythonStringRepr)
+import Petrus.Posix.At qualified as Posix
+import Petrus.Posix.File qualified as Posix
 import System.Posix.Directory.ByteString (closeDirStream, createDirectory, openDirStream, readDirStream)
 import System.Posix.Files.ByteString
   ( FileStatus
@@ -85,7 +85,7 @@ import System.Posix.IO.ByteString
   , openFd
   )
 import System.IO (SeekMode (..))
-import System.Posix.Types (CSsize (..), Fd (..), FileOffset)
+import System.Posix.Types (Fd (..), FileOffset)
 import Control.Exception (bracket)
 
 -- | @MAX_ARCHIVE_BYTES@ (512 MiB): the transfer bound.
@@ -672,35 +672,18 @@ makeFile copyData member targetpath = do
           throwExecution ValueError (T.pack ("negative seek position " <> show (memberSize member)))
         F.setFdSize fd (fromIntegral (memberSize member))
 
--- | Write all bytes in 64 KiB @write(2)@ calls (the size that measured
--- fastest for large extractions).  The call is @unsafe@: a 64 KiB write to
--- a regular file takes microseconds, and a @safe@ call per chunk cost ~10%
--- of a 256 MiB extraction.
+-- | Write all bytes: petrus-posix's whole-buffer @write(2)@ loop. An
+-- unsafe 64 KiB loop of this module's own measured no faster on the
+-- extraction rows (bench/RESULTS.md, "extraction writes ... (A/B)").
 writeAll :: Fd -> ByteString -> IO ()
-writeAll (Fd fd) bytes = unless (B.null bytes) $ do
-  written <-
-    BU.unsafeUseAsCStringLen bytes $ \(ptr, len) ->
-      throwErrnoIfMinus1Retry "write" (c_write fd (castPtr ptr) (fromIntegral (min len (64 * 1024))))
-  writeAll (Fd fd) (B.drop (fromIntegral written) bytes)
-
-foreign import capi unsafe "unistd.h write"
-  c_write :: CInt -> Ptr Word8 -> CSize -> IO CSsize
-
-foreign import capi unsafe "unistd.h linkat"
-  c_linkat :: CInt -> CString -> CInt -> CString -> CInt -> IO CInt
-
-foreign import capi unsafe "fcntl.h value AT_FDCWD" atFdcwd :: CInt
-
-foreign import capi unsafe "fcntl.h value AT_SYMLINK_FOLLOW" atSymlinkFollow :: CInt
+writeAll = Posix.writeAll
 
 -- | @os.link(src, dst)@ (which follows a symlinked source).
 hardLink :: ByteString -> ByteString -> IO ()
-hardLink source target =
-  B.useAsCString source $ \src -> B.useAsCString target $ \dst -> do
-    result <- c_linkat atFdcwd src atFdcwd dst atSymlinkFollow
-    when (result /= 0) $ do
-      errno <- getErrno
-      ioError (errnoToIOError "link" errno Nothing (Just (BC.unpack target)))
+hardLink source target = do
+  from <- fromRawPath source
+  to <- fromRawPath target
+  Posix.linkAt Nothing from Nothing to Posix.FollowLinks
 
 -- | @TarFile.makelink_with_filter@.
 makeLink :: CopyData -> [Member] -> ByteString -> Filtered -> ByteString -> IO ExtractOutcome

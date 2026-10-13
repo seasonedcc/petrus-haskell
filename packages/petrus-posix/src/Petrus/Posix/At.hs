@@ -24,6 +24,7 @@ module Petrus.Posix.At
   , unlinkAt
   , removeDirectoryAt
   , renameAt
+  , linkAt
   , listDirectoryFd
   , rmtree
 
@@ -76,6 +77,11 @@ foreign import capi interruptible "sys/stat.h mkdirat" c_mkdirat :: CInt -> CStr
 foreign import capi interruptible "unistd.h unlinkat" c_unlinkat :: CInt -> CString -> CInt -> IO CInt
 
 foreign import capi interruptible "stdio.h renameat" c_renameat :: CInt -> CString -> CInt -> CString -> IO CInt
+
+foreign import capi interruptible "unistd.h linkat"
+  c_linkat :: CInt -> CString -> CInt -> CString -> CInt -> IO CInt
+
+foreign import capi unsafe "fcntl.h value AT_SYMLINK_FOLLOW" c_AT_SYMLINK_FOLLOW :: CInt
 
 foreign import capi unsafe "sys/stat.h fchmod" c_fchmod :: CInt -> CMode -> IO CInt
 
@@ -150,6 +156,20 @@ renameAt fromDir from toDir to = do
   toBase <- directoryFd toDir
   withPath from $ \cfrom -> withPath to $ \cto ->
     retryPath "renameat" from (c_renameat fromBase cfrom toBase cto)
+
+-- | @os.link(src, dst, src_dir_fd=, dst_dir_fd=, follow_symlinks=)@: a new
+-- hard link @dst@ to @src@. 'FollowLinks' (@os.link@'s default) links the
+-- file a symlinked source names, 'NoFollowLinks' the symlink itself. An
+-- error names the source, CPython's @filename@.
+linkAt :: Maybe Fd -> FilePath -> Maybe Fd -> FilePath -> Follow -> IO ()
+linkAt fromDir from toDir to follow = do
+  fromBase <- directoryFd fromDir
+  toBase <- directoryFd toDir
+  let flag = case follow of
+        FollowLinks -> c_AT_SYMLINK_FOLLOW
+        NoFollowLinks -> 0
+  withPath from $ \cfrom -> withPath to $ \cto ->
+    retryPath "linkat" from (c_linkat fromBase cfrom toBase cto flag)
 
 -- | @os.listdir(fd)@: the entry names of an open directory, in @readdir@
 -- order, without @.@ and @..@. The descriptor stays open and owned by the
