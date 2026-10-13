@@ -1,6 +1,6 @@
 # petrus-http-core benchmarks
 
-<!-- scripts/bench: measured sources 83735608154a3639 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources e82d9b01f3df5af4 at 10b5172ba180 -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
@@ -10,8 +10,8 @@ faster. Haskell is faster on every row: 1.6–2.0× on the loopback round trips 
 
 ## Current figures
 
-Measured on 2026-10-12, 02:03–02:04 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.48–3.03:
+Measured on 2026-10-12, 23:09–23:11 local (UTC-3), at commit `46473c2`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 4.61–5.44:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-http-core 3
@@ -24,14 +24,14 @@ Haskell (above 1 means Haskell is faster). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `roundtrip.get-snapshot` | 56.5 µs | 116 µs | 2.05× | 2.04× | 56.5 µs, 55.1 µs, 57 µs | 115 µs, 116 µs, 117 µs |
-| `roundtrip.post-1k` | 58.4 µs | 118 µs | 2.02× | 1.92× | 61.2 µs, 58.4 µs, 57.9 µs | 117 µs, 118 µs, 119 µs |
-| `roundtrip.refused-version` | 54.7 µs | 92.4 µs | 1.69× | 1.62× | 54.7 µs, 57.1 µs, 53.2 µs | 92.4 µs, 92.2 µs, 93.3 µs |
-| `parse.request-head` | 703 ns | 13.2 µs | 18.81× | 18.59× | 708 ns, 703 ns, 700 ns | 13.2 µs, 13.2 µs, 13.4 µs |
-| `render.send-error` | 1.79 µs | 4.28 µs | 2.39× | 2.37× | 1.76 µs, 1.79 µs, 1.79 µs | 4.34 µs, 4.24 µs, 4.28 µs |
-| `render.response` | 822 ns | 3.4 µs | 4.13× | 4.07× | 818 ns, 829 ns, 822 ns | 3.4 µs, 3.4 µs, 3.34 µs |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `roundtrip.get-snapshot` | 60.2 µs | 121 µs | 2.02× | 1.99× | 3 of 3 | 60.2 µs, 61.9 µs, 58.2 µs | 121 µs, 123 µs, 119 µs |
+| `roundtrip.post-1k` | 62.9 µs | 122 µs | 1.93× | 1.92× | 3 of 3 | 62.9 µs, 63.2 µs, 61.4 µs | 121 µs, 122 µs, 122 µs |
+| `roundtrip.refused-version` | 57.5 µs | 101 µs | 1.75× | 1.49× | 3 of 3 | 54.6 µs, 67.7 µs, 57.5 µs | 102 µs, 101 µs, 95.8 µs |
+| `parse.request-head` | 713 ns | 13.5 µs | 18.99× | 18.88× | 3 of 3 | 715 ns, 713 ns, 713 ns | 13.7 µs, 13.5 µs, 13.5 µs |
+| `render.send-error` | 1.93 µs | 4.36 µs | 2.26× | 2.16× | 3 of 3 | 1.88 µs, 1.93 µs, 1.93 µs | 4.37 µs, 4.36 µs, 4.18 µs |
+| `render.response` | 864 ns | 3.46 µs | 4.01× | 3.94× | 3 of 3 | 873 ns, 864 ns, 852 ns | 3.51 µs, 3.46 µs, 3.36 µs |
 
 ## Earlier figures
 
