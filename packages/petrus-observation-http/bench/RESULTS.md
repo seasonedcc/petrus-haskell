@@ -1,6 +1,6 @@
 # petrus-observation-http benchmarks
 
-<!-- scripts/bench: measured sources 550f5380fd4187a7 at a99bed82d20f -->
+<!-- scripts/bench: measured sources f61bda8c028ae2e0 at 2cf4687e4eac -->
 
 This compares the Haskell observation server with the upstream
 `petrus.engine.observation_http` at the pin in [UPSTREAM.md](../../../UPSTREAM.md).
@@ -12,8 +12,8 @@ Haskell is faster on every row.
 
 ## Current figures
 
-Measured on 2026-10-12, 18:59–19:01 local (UTC-3), at commit `b1b7c1e`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.14–3.94:
+Measured on 2026-10-12, 20:53–20:54 local (UTC-3), at commit `ca1eca7`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.23–2.77:
 five interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-observation-http 5
@@ -28,10 +28,10 @@ analysis that came with them.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
-| `roundtrip.snapshot` | 59.8 µs | 213 µs | 3.57× | 3.48× | 5 of 5 | 59.8 µs, 58.5 µs, 61.5 µs, 59.4 µs, 61.4 µs | 212 µs, 213 µs, 222 µs, 215 µs, 213 µs |
-| `roundtrip.document` | 3.83 ms | 22.6 ms | 5.91× | 5.68× | 5 of 5 | 3.81 ms, 3.84 ms, 3.95 ms, 3.83 ms, 3.82 ms | 22.6 ms, 22.6 ms, 22.4 ms, 22.6 ms, 22.4 ms |
-| `roundtrip.history-100` | 126 µs | 569 µs | 4.51× | 3.94× | 5 of 5 | 126 µs, 136 µs, 131 µs, 125 µs, 126 µs | 536 µs, 536 µs, 570 µs, 578 µs, 569 µs |
-| `roundtrip.refused-405` | 50.8 µs | 124 µs | 2.44× | 2.12× | 5 of 5 | 50.8 µs, 58.7 µs, 55.7 µs, 50.4 µs, 49.9 µs | 123 µs, 125 µs, 124 µs, 124 µs, 122 µs |
+| `roundtrip.snapshot` | 60 µs | 212 µs | 3.53× | 3.13× | 5 of 5 | 67.3 µs, 57.7 µs, 64.6 µs, 58.5 µs, 60 µs | 211 µs, 212 µs, 211 µs, 213 µs, 215 µs |
+| `roundtrip.document` | 3.83 ms | 22.6 ms | 5.91× | 5.76× | 5 of 5 | 3.94 ms, 3.82 ms, 3.83 ms, 3.84 ms, 3.79 ms | 22.7 ms, 22.8 ms, 22.6 ms, 22.6 ms, 22.6 ms |
+| `roundtrip.history-100` | 129 µs | 568 µs | 4.41× | 4.29× | 5 of 5 | 129 µs, 127 µs, 131 µs, 128 µs, 130 µs | 564 µs, 569 µs, 564 µs, 569 µs, 568 µs |
+| `roundtrip.refused-405` | 50.8 µs | 124 µs | 2.44× | 2.43× | 5 of 5 | 51 µs, 50.8 µs, 50.3 µs, 50.8 µs, 51.1 µs | 124 µs, 124 µs, 124 µs, 124 µs, 124 µs |
 
 ## Earlier figures
 
@@ -114,21 +114,22 @@ identical requests. The client therefore costs the same on both sides.
   alternating which server goes first, after a warm-up.
 - **Figures.** The tables give the median over 5 repetitions of throughput
   and of the per-request p50 and p99 latencies. Measured on 2026-10-12,
-  19:01–19:08 local (UTC-3), at commit `a99bed8`, with the 1-minute load
-  average at 2.10 to 3.20, by
+  20:54–21:01 local (UTC-3), at commit `2cf4687`, with the 1-minute load
+  average at 2.01 to 4.58, by
   `scripts/bench-run petrus-observation-http load 5 +RTS -M2G -RTS`. The
-  run at `81bbdc5` (04:03–04:10, load 2.26 to 2.80) read 1.86–5.38×; an
+  run at `a99bed8` (19:01–19:08, load 2.10 to 3.20) read 1.95–5.91×, the
+  one at `81bbdc5` (04:03–04:10, load 2.26 to 2.80) 1.86–5.38×; an
   earlier one (load 2.47 to 4.30) had Haskell ahead 1.61–3.48×.
 
 | Scenario | Clients | Haskell req/s | Haskell p50 / p99 | Python req/s | Python p50 / p99 | Haskell / Python |
 |---|---:|---:|---:|---:|---:|---:|
-| snapshot | 1 | 15143 | 60 µs / 91 µs | 4847 | 196 µs / 269 µs | 3.12× |
-| snapshot | 4 | 20891 | 189 µs / 241 µs | 5518 | 707 µs / 1.44 ms | 3.79× |
-| document (201 records) | 1 | 258 | 3.66 ms / 5.18 ms | 45 | 22.03 ms / 27.92 ms | 5.76× |
-| document (201 records) | 4 | 263 | 15.15 ms / 20.24 ms | 45 | 88.67 ms / 133.30 ms | 5.91× |
-| history after=0 limit=100 | 1 | 7304 | 133 µs / 193 µs | 1862 | 530 µs / 602 µs | 3.92× |
-| history after=0 limit=100 | 4 | 8931 | 435 µs / 604 µs | 2027 | 1.93 ms / 3.45 ms | 4.41× |
-| refused POST (405) | 1 | 17458 | 54 µs / 119 µs | 8970 | 111 µs / 132 µs | 1.95× |
+| snapshot | 1 | 15770 | 61 µs / 93 µs | 5097 | 195 µs / 219 µs | 3.09× |
+| snapshot | 4 | 20950 | 188 µs / 242 µs | 5429 | 704 µs / 1.41 ms | 3.86× |
+| document (201 records) | 1 | 258 | 3.64 ms / 5.14 ms | 44 | 22.21 ms / 28.03 ms | 5.82× |
+| document (201 records) | 4 | 264 | 15.17 ms / 20.08 ms | 44 | 89.34 ms / 137.50 ms | 5.96× |
+| history after=0 limit=100 | 1 | 7680 | 128 µs / 187 µs | 1919 | 507 µs / 587 µs | 4.00× |
+| history after=0 limit=100 | 4 | 8969 | 432 µs / 589 µs | 2051 | 1.89 ms / 3.40 ms | 4.37× |
+| refused POST (405) | 1 | 17917 | 54 µs / 91 µs | 8959 | 110 µs / 128 µs | 2.00× |
 
 ## Notes
 
