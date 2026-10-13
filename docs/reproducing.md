@@ -92,17 +92,12 @@ export PETRUS_TEST_POSTGRES=postgresql://postgres:postgres@127.0.0.1:5432/postgr
 ## Clone
 
 ```sh
-gh repo clone seasonedcc/petrus-haskell -- --recurse-submodules
+git clone --recursive https://github.com/seasonedcc/petrus-haskell.git
 cd petrus-haskell
 ```
 
-The repository is private, so the clone needs an account with access to it:
-`gh` (GitHub's CLI, logged in with `gh auth login`) supplies the
-credentials, or clone over SSH with a key the account knows
-(`git clone --recursive git@github.com:seasonedcc/petrus-haskell.git`). An
-anonymous `https://` clone is refused.
-
-`--recurse-submodules` (`--recursive`) checks out the four pinned upstream projects under
+The repository and the upstream projects are public, so no account is needed.
+`--recursive` checks out the four pinned upstream projects under
 `upstream/` ([UPSTREAM.md](../UPSTREAM.md)). In an existing clone,
 `git submodule update --init --recursive` does the same.
 
@@ -174,9 +169,8 @@ It runs, in order, and stops at the first failing step:
     the script cannot read fails too, so none goes unchecked. No document states how
     many Haskell examples a suite has (`scripts/lint-example-counts`): such a
     number goes stale with the next test. `cabal test` prints each suite's
-    count, and CI's `ci` job prints every suite's and records it in the
-    run's `test-ledger` artifact. It warns (`STALE evidence`) about
-    components whose cited results are stale.
+    count, and CI's `test` jobs print every suite's. It warns
+    (`STALE evidence`) about components whose cited results are stale.
 15. `packages/petrus-engine/scripts/parity_check.py`: the runtime test
     ledgers account for every in-scope upstream test.
 
@@ -269,7 +263,7 @@ scripts/bench petrus-sqlite     # rerun one package, Haskell and Python
 scripts/bench                   # every package, one at a time (slow)
 scripts/bench-compare petrus-sqlite 3   # interleave 3 Haskell and Python runs, tabulate
 scripts/bench-run petrus-sqlite --stdev 5 +RTS -M2G -RTS   # one package's benchmark, with options
-scripts/bench-gate petrus-sqlite        # its gated rows against Python (CI's nightly gate)
+scripts/bench-gate petrus-sqlite        # its gated rows against Python (CI's gate, on request)
 ```
 
 Each package's `bench/RESULTS.md` holds its committed figures, how they were
@@ -410,7 +404,7 @@ is the commit those sources were at. `summary.md` shows each file's commit.
   `scripts/bench --stamp PKG results-x.md`). That records HEAD's fingerprint
   and regenerates `summary.md`. Commit the result.
 
-A push reruns no benchmark. The nightly run and a `full` dispatch run
+A push reruns no benchmark. A `full` dispatch runs
 `scripts/bench --smoke` (the `bench-smoke` job), which builds every
 benchmark and runs it once: each tasty-bench row measured once (`--stdev
 Infinity`), or, for the custom harnesses, the sh block after a `<!--
@@ -418,8 +412,10 @@ scripts/bench: smoke -->` marker in the package's RESULTS.md. So a benchmark
 cannot silently stop building or running. The same job lists the stale
 results files in its run summary.
 
-They also run `scripts/bench-gate` (the `bench-gate` jobs, four shards),
-which measures. Its `ENTRIES` name, for every package with a Python twin,
+A dispatch with `bench` (`gh workflow run ci.yml -f bench=true`) also runs
+`scripts/bench-gate` (the `bench-gate` jobs, four shards), which measures;
+no run measures on its own, since the committed figures are the record and
+a gate on every run would only re-measure them. Its `ENTRIES` name, for every package with a Python twin,
 the rows with the thinnest margin (and, where every margin is wide, the
 headline row): 42 entries over 39 packages. Each pair of Haskell and Python
 runs is repeated 5 times, alternating which side goes first; each
@@ -619,11 +615,12 @@ legitimately needs one says so with `-- lint-skips: allow <reason>`.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push to `main`, every pull request,
-nightly (04:17 UTC) and on demand (`workflow_dispatch`, with a `full`
-input, and a `sha` input that tests that commit instead of the branch's
+`.github/workflows/ci.yml` runs on every push to `main`, every pull request
+and on demand (`workflow_dispatch`, with a `full` input, a `bench` input,
+and a `sha` input that tests that commit instead of the branch's
 tip). It runs the steps of `scripts/check-all --viewer`, plus the container
-job, spread over Blacksmith runners so that they run side by side:
+job, spread over Blacksmith runners so that they run side by side. Every
+run runs every test suite; only the build is incremental (see Caches):
 
 | CI job | Runner | `scripts/check-all` step |
 | --- | --- | --- |
@@ -631,16 +628,16 @@ job, spread over Blacksmith runners so that they run side by side:
 | `build` | 16 vCPU | `cabal build all` (`-Werror`); then plans the test shards |
 | `checks` | 4 vCPU | `scripts/interop --check` (with the PostgreSQL and Docker variables set, so that the selection counts those examples too); `scripts/check-corpora`, with PostgreSQL 17 |
 | `test (1)` … `test (N)` | 8 vCPU | the upstream Python environments, then `cabal test` of the shard's suites, with PostgreSQL 17 (pinned by digest); then `scripts/check-pending` on their output (a suite with a pending example outside the declared opt-ins does not count as passed) |
-| `viewer` | 8 vCPU | `--viewer`: what `scripts/interop --viewer petrus-viewer-server` runs (`scripts/ci-tests run-viewer`: the interop group, then every upstream petrus-viewer suite, in three groups side by side), with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium; then the MCP golden transcript re-recorded through the upstream Node MCP server; nightly and `full` also `scripts/bench-gate petrus-viewer-server` |
-| `bench-smoke` | 8 vCPU | nightly and `full` only, with PostgreSQL 17: `scripts/bench --smoke` (every benchmark builds and runs once; not a measurement) and the list of stale results files ([Which code the figures measured](#which-code-the-figures-measured)) |
-| `bench-gate` (4 shards) | 8 vCPU | nightly and `full` only, with PostgreSQL 17: `scripts/bench-gate --shard N/4`, the gated rows against the pinned Python, 5 interleaved repetitions, failing on a row Haskell did not win most repetitions of ([Which code the figures measured](#which-code-the-figures-measured)) |
+| `viewer` | 8 vCPU | `--viewer`: what `scripts/interop --viewer petrus-viewer-server` runs (`scripts/ci-tests run-viewer`: the interop group, then every upstream petrus-viewer suite, in three groups side by side), with Node 22.19.0, pnpm 11.5.1 and Playwright's Chromium; then the MCP golden transcript re-recorded through the upstream Node MCP server; a dispatch with `bench` also `scripts/bench-gate petrus-viewer-server` |
+| `bench-smoke` | 8 vCPU | a dispatch with `full` only, with PostgreSQL 17: `scripts/bench --smoke` (every benchmark builds and runs once; not a measurement) and the list of stale results files ([Which code the figures measured](#which-code-the-figures-measured)) |
+| `bench-gate` (4 shards) | 8 vCPU | a dispatch with `bench` only, with PostgreSQL 17: `scripts/bench-gate --shard N/4`, the gated rows against the pinned Python, 5 interleaved repetitions, failing on a row Haskell did not win most repetitions of ([Which code the figures measured](#which-code-the-figures-measured)) |
 | `container` | 16 vCPU | none (Docker): the image and `scripts/container-smoke` ([The container image](#the-container-image)) |
 | `ci` | 2 vCPU | the verdict: green only when every job above is |
 
 Every push to `main` gets a complete run of its tip, which holds every
 change the push brought. An earlier commit of the same push can be
 checked on its own with `gh workflow run ci.yml -f sha=<commit>` (the
-`sha` input checks out, builds, tests and records that commit). On `main`, each run has its own concurrency group, so a
+`sha` input checks out, builds and tests that commit). On `main`, each run has its own concurrency group, so a
 newer push neither cancels it nor replaces it while it waits. On a branch or pull request a newer push
 cancels the older run. `main` has no branch protection rule: commits land on
 it without waiting for CI, and the run of each commit, red or green, is what
@@ -655,13 +652,12 @@ than the opt-in benchmarks) has no CI step of that name: a check added to
 versions. The cabal store and package index are cached by `cabal.project`,
 `cabal.project.freeze` and the `.cabal` files, falling back to the latest
 entry. `dist-newstyle` is cached by commit, falling back to the latest
-entry, so `build` recompiles only what changed since. The nightly run and a
-dispatch with `full` restore no `dist-newstyle` and build every package from
-scratch (under a cache key of their own, so their later jobs never restore
-an incremental build). A branch or pull request reads its own entries and
-those of `main`. The test jobs and `checks` restore the `dist-newstyle` that
-`build` saved for the commit and build nothing. Every job prepares the
-restored `dist-newstyle` the same way, in one composite action
+entry, so `build` recompiles only what changed since. That is all a run
+takes from an earlier one: no test result is ever carried over. A branch or
+pull request reads its own entries and those of `main`. The test jobs and
+`checks` restore the `dist-newstyle` that `build` saved for the commit and
+build nothing. Every job prepares the restored `dist-newstyle` the same
+way, in one composite action
 (`.github/actions/cabal-dist`):
 
 - CI's test flags (`--test-show-details=direct`, the
@@ -695,48 +691,31 @@ binaries (`scripts/ci-tests check-parts`, hspec dry runs): each part
 selects an example, and the parts' counts add up to the suite's. A suite passes only when all its parts pass. Stale
 times only unbalance the jobs.
 
-**Reusing results.** Each run's `ci` job uploads a test ledger: for every
-suite known green at that commit, its input hash and the run where it
-passed. `build` reads the ledgers of the latest runs on the same branch and
-on `main`, and a suite is not run again when its input hash equals one in
-those ledgers. The hash covers, as committed: every file of the suite's
-package, of every local package it depends on (any component, transitively,
-from cabal's plan) and of every local package its files name or lead into
-by a relative path (`hs-source-dirs: ../petrus-engine/test`, a fixture read
-as `../../petrus-json/test/...`); every file
-outside `packages/` (the cabal project and freeze file, `scripts/`, the
-submodule pins, `spec/`, `deployment/`, `.github/`, ...) except README.md,
-PARITY.md, SCOPE.md, `docs/` and `bench-results/`; and the toolchain and
-runner image (GHC, cabal, uv, Node, Python and Docker versions, the system
-libraries). `scripts/ci-tests inputs` prints each suite's hash and the
-packages it covers. The `build` log and the run summary list every reused
-suite with the run it comes from. The scan for other packages is a
-heuristic: a path built at run time that neither names the package nor
-climbs out with `../` (an environment variable, say) escapes it, so such a
-dependency must be spelled out as a path or a package name in a committed
-file of the package that reads it. The nightly run and a dispatch with
-`full` reuse nothing and run every suite, so a missed edge surfaces within a
-day:
+**A build from scratch.** A dispatch with `full` restores no
+`dist-newstyle` and builds every package from scratch (under a cache key of
+its own, so its later jobs never restore an incremental build), and adds
+the `bench-smoke` job:
 
 ```sh
 gh workflow run CI --ref main -f full=true
 ```
 
 When a `test` job fails on a flaky test, rerunning the failed jobs reruns
-only those shards; the ledger counts a part as passed when an attempt of the
-run passed it.
+only those shards, and the `ci` verdict after them.
 
 **Timings** (October 2026, wall clock from the first job's start to the
 `ci` verdict):
 
 | Run | Total | Notes |
 | --- | --- | --- |
-| Cold: no cache at all, every suite | about 10 min | GHC and cabal install 1 min, build 5.5 min, test jobs 1.5 to 2 min, container 6.5 min (side by side with the build) |
-| Warm, every suite (a change outside `packages/`) | about 4 min | build job 1 min, test jobs 1.5 to 2 min, `viewer` 2.5 min |
-| Warm, a change to a package many suites depend on | 4 to 5.5 min | build 1 to 3 min, depending on how much recompiles |
-| Warm, a change to a leaf package | about 3 to 4 min | its suites only |
+| Cold: no cache at all | about 10 min | GHC and cabal install 1 min, build 5.5 min, test jobs 1.5 to 2 min, container 6.5 min (side by side with the build) |
+| Warm, nothing to recompile (a change outside `packages/`) | 4.0 to 4.2 min | `build` job under 1 min (`cabal build` 8 s); then, side by side, the test jobs 1.7 to 2.5 min, `checks` 1.9 to 2.1 min and `viewer` 2.9 min |
+| Warm, packages recompiled | the above plus the extra build time | `cabal build` takes from seconds to 4.5 min, depending on how much recompiles, so 5 to 7.5 min in all |
 
-The single-runner workflow this replaced took about 50 minutes. Within a
-warm run, the longest jobs are `viewer` (the upstream petrus-viewer suites,
-about 1:45) and the shards holding parts of `hamsterdan-testing` (its
-World runs).
+Each job after `build` spends about 40 s on setup (checkout, the toolchain
+and cache restores, the upstream Python environments) before its own work;
+the test shards then spend 40 to 100 s in `cabal test`. The longest job is
+`viewer` (the upstream petrus-viewer suites alone take about 1:45), and
+`build` is on the path of every run: with nothing to recompile it is mostly
+its own setup. The single-runner workflow this replaced took about 50
+minutes.

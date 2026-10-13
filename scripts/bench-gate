@@ -10,9 +10,9 @@ win most of the interleaved repetitions.
     scripts/bench-gate --list               # the entries and their rows
     options: --reps N (default 5), --no-build, --json FILE
 
-CI runs it nightly and on a dispatch with ``full`` (the ``bench-gate`` job,
-and the ``viewer`` job for petrus-viewer-server), never on an ordinary push: the figures need minutes of machine time and a
-quiet runner. The committed results files (``packages/*/bench/*.md``) are
+CI runs it only on a dispatch with ``bench`` (the ``bench-gate`` job, and
+the ``viewer`` job for petrus-viewer-server): the figures need minutes of
+machine time and a quiet runner. The committed results files (``packages/*/bench/*.md``) are
 measured by hand, on a quiet machine, with more repetitions; this gate is the
 check that their headline rows still hold for the code at HEAD.
 

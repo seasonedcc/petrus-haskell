@@ -16,7 +16,7 @@ inputs:
   fresh:
     description: >-
       "true": restore nothing and build from an empty dist-newstyle (the
-      build job of the nightly run and of a `full` dispatch).
+      build job of a `full` dispatch).
     required: false
     default: "false"
   fail-on-cache-miss:

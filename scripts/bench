@@ -10,7 +10,7 @@
     scripts/bench --stale           # the results files whose package sources changed since measured
     scripts/bench --stamp PKG [FILE.md ...]
                                     # after a rerun: record that PKG's figures measure HEAD's sources
-    scripts/bench --smoke [PKG ...] # build every benchmark and run it once, quickly (CI's nightly run)
+    scripts/bench --smoke [PKG ...] # build every benchmark and run it once, quickly (CI's `full` run)
 
 Each package's results (``packages/<pkg>/bench/RESULTS.md``) are curated by
 hand: the workloads, the machine, how both sides were measured, and the
@@ -44,8 +44,8 @@ file, the pinned ``upstream/`` commits and ``scripts/bench_timing.py``
 were. ``--check`` fails on a results file without the marker and lists, as
 ``STALE``, every results file whose fingerprint has changed since: its
 figures measured other code and may no longer hold (a warning, so that a
-code change does not have to wait for a quiet machine; the nightly
-``scripts/bench-gate`` remeasures the headline rows, and
+code change does not have to wait for a quiet machine; ``scripts/bench-gate``
+remeasures the headline rows on request, and
 ``scripts/check-parity`` names the components whose evidence is stale).
 ``--stale`` lists the same files. After rerunning a package and updating its
 figures, ``--stamp PKG`` (or ``--stamp PKG results-x.md`` for one of several
@@ -55,8 +55,8 @@ files) records HEAD's fingerprint and regenerates the summary.
 (tasty-bench's ``--stdev Infinity``, or the sh block after a
 ``<!-- scripts/bench: smoke -->`` marker in the package's RESULTS.md, run
 from the repository root with ``BENCH_BIN`` set to the built executable), so
-that a benchmark cannot silently stop building or running. CI's nightly run
-does this.
+that a benchmark cannot silently stop building or running. A `full` CI
+dispatch does this.
 
 A block typically runs ``scripts/bench-run <pkg> OPTIONS`` (the benchmark
 executable, built once; options never enter cabal's configuration) and then

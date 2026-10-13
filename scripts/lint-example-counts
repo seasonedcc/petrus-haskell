@@ -9,8 +9,8 @@ the next test anyone adds, and nothing would notice. The numbers live where
 they are measured instead:
 
 - `cabal test <package>` prints its suite's count ("N examples, 0 failures");
-- CI's `ci` job (`scripts/ci-tests ledger`) prints every suite's count, and
-  the run's `test-ledger` artifact records it with the commit it tested.
+- CI's `test` jobs (`scripts/ci-tests run-shard`) print the count of every
+  suite they run (of a split suite, each part's).
 
 Upstream counts (the tests and cases pytest collects) are a different
 matter: they are stated, and scripts/upstream-test-counts checks them
@@ -79,7 +79,7 @@ def main() -> int:
         print("lint-example-counts: documents state Haskell example counts, which go stale:", file=sys.stderr)
         for problem in problems:
             print(f"  {problem}", file=sys.stderr)
-        print("Say what the examples check instead; `cabal test` and CI's `ci` job report the counts "
+        print("Say what the examples check instead; `cabal test` and CI's `test` jobs report the counts "
               "(see scripts/lint-example-counts).", file=sys.stderr)
         return 1
     print("lint-example-counts: no document states a Haskell example count")
