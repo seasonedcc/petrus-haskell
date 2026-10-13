@@ -14,6 +14,15 @@ status lives in [PARITY.md](PARITY.md).
 | [henriquebastos/petrus-viewer](https://github.com/henriquebastos/petrus-viewer) | Every non-UI capability, served by Haskell: the `petrus` CLI, the MCP server, the agent WebSocket protocol, the collaboration relay, file/URL endpoints, simulation, and history replay. | Petrus's visual editor and agent interface. The browser UI (React/TypeScript) stays as is: it is presentation, and a Haskell rewrite of it would add risk without improving Petrus. |
 | [henriquebastos/petrus-engine](https://github.com/henriquebastos/petrus-engine) | Loading net files in its `fileVersion: "2"` format (the viewer's file format). | Existing nets authored in the viewer must keep loading. The rest of petrus-engine is the predecessor of the `petrus` runtime and is superseded by it. |
 
+## Beyond the port
+
+Tools with no upstream twin, built on the port and run against any Petrus net, from Haskell or
+Python, through its Net-definition v3 or Net document v1:
+
+| Package | What it does | Why |
+| --- | --- | --- |
+| `petrus-net-lint` | Finds the signs of a net whose marking collapsed into one token, in a net's structure and its author's declared outcomes ([README](packages/petrus-net-lint/README.md)). | A net whose state hides inside one token shows nothing a tool can check: what runs at the same time, what waits on what, what is scarce. |
+
 ## Out of scope
 
 | Upstream | Why |

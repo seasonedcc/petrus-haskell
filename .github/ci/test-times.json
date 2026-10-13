@@ -33,6 +33,7 @@
   "petrus-motus-absurd-test": 15,
   "petrus-motus-test": 5,
   "petrus-motus-zeromq-test": 11,
+  "petrus-net-lint-test": 1,
   "petrus-observation-http-test": 1,
   "petrus-observation-test": 1,
   "petrus-posix-test": 1,

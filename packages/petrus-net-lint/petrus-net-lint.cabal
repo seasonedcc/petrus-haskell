@@ -1,0 +1,72 @@
+cabal-version:      3.4
+name:               petrus-net-lint
+version:            0.1.0.0
+synopsis:           Finds nets whose marking collapsed into one token
+description:
+  A Petrus net's state is its marking: which tokens sit in which places.
+  "Petrus.Net.Lint" finds, in a net's structure and the outcomes its author
+  declares ("Petrus.Net.Declared"), the signs that the state hides inside a
+  token instead: one token running an S-net, nothing joined or forked, a
+  handler choosing its output place, tokens routed by a status field, a
+  count kept in a token, a place nothing both fills and empties, and a read
+  or inhibitor arc trusted for the length of an Activity. A justified
+  finding is waived in a file beside the net, with its reason.
+license:            Apache-2.0
+license-file:       LICENSE
+copyright:          2026 Seasoned
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+extra-doc-files:    README.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Net.Declared
+                    Petrus.Net.Files
+                    Petrus.Net.Lint
+  build-depends:    base >=4.18 && <5
+                  , bytestring >=0.11
+                  , containers >=0.6
+                  , directory >=1.3
+                  , filepath >=1.4
+                  , petrus-cel
+                  , petrus-impetus
+                  , petrus-json
+                  , text >=2.0
+
+executable petrus-net-lint
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          Main.hs
+  build-depends:    base
+                  , petrus-net-lint
+                  , text
+
+test-suite petrus-net-lint-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    LintSpec
+  build-depends:    base
+                  , bytestring
+                  , containers
+                  , hspec >=2.10
+                  , petrus-impetus
+                  , petrus-net-lint
+                  , text
+  ghc-options:      -threaded -rtsopts
