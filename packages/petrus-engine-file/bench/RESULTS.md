@@ -1,6 +1,6 @@
 # fileVersion 2 benchmarks: Haskell vs petrus-engine
 
-<!-- scripts/bench: measured sources fc866794e24395b7 at f6aeabc89de1 -->
+<!-- scripts/bench: measured sources fc866794e24395b7 at 6be7b9ae133d -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` time the same steps
 on the same input texts. `bench/process_bench.py` times the format command
@@ -149,28 +149,30 @@ are compared byte for byte after every run. Times are medians, the
 speed-up is Python's median over Haskell's, and "lowest round" is the
 smallest ratio within a single round.
 
-Run on 2026-10-12, 04:10–04:11 local (UTC-3), at commit `81bbdc5`, on the
+Run on 2026-10-12, 23:05–23:06 local (UTC-3), at commit `6be7b9a`, on the
 same machine (Apple M4, 10 cores, 24 GB, macOS 26), with CPython 3.14.6 and
 petrus-engine at the pin, by
 
     "$(scripts/upstream-python petrus-engine)" -B packages/petrus-engine-file/bench/process_bench.py "$(cabal list-bin -v0 petrus-engine-file:exe:petrus-format-json)" 11
 
-The run had 11 rounds, with a load average of 2.78 at the start and 2.66 at
-the end. An earlier run (2026-10-11, load average 5.6–5.8) gave 2.29–5.05×:
+The run had 11 rounds, with a load average of 3.63 at the start and 3.50 at
+the end. Its chain-10000 lowest round (1.27×) is a single round at that
+load; the median over the 11 is 1.97×. The run at
+`81bbdc5` (load average 2.78–2.66) gave 2.34–3.96×. An earlier run (2026-10-11, load average 5.6–5.8) gave 2.29–5.05×:
 Python's start-up was about 10 ms slower under that load, and Haskell's
 about 2 ms faster (17.0 ms against 19.4 ms for chain-10).
 
 | scenario | Python | Haskell | speed-up | lowest round |
 | --- | ---: | ---: | ---: | ---: |
-| --infile/--outfile chain-10 | 76.3 ms | 19.4 ms | 3.94× | 3.77× |
-| --infile/--outfile chain-1000 | 108.1 ms | 31.8 ms | 3.40× | 3.19× |
-| --infile/--outfile chain-10000 | 454.0 ms | 193.7 ms | 2.34× | 2.26× |
-| in place, 100 x chain-10 | 119.7 ms | 30.2 ms | 3.96× | 3.58× |
+| --infile/--outfile chain-10 | 76.9 ms | 17.8 ms | 4.31× | 3.91× |
+| --infile/--outfile chain-1000 | 110.7 ms | 34.7 ms | 3.20× | 3.01× |
+| --infile/--outfile chain-10000 | 474.7 ms | 241.1 ms | 1.97× | 1.27× |
+| in place, 100 x chain-10 | 120.6 ms | 35.0 ms | 3.45× | 3.41× |
 
 Python spends 70–85 ms starting the interpreter and importing pydantic
 and petrus-engine before it formats anything. That start-up cost decides
 the small inputs. On chain-10000 the formatting itself dominates, and the
-ratio approaches the library rows' `format` ratio (2.1× in the current figures), less the time
+ratio approaches the library rows' `format` ratio (2.5× in the current figures), less the time
 both commands spend reading and writing 2 MB.
 
 ## Notes
