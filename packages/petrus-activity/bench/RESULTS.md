@@ -1,6 +1,6 @@
 # petrus-activity benchmarks: Haskell vs the pinned `petrus.motus.activity`
 
-<!-- scripts/bench: measured sources 66cba3afd2b0b0c3 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 56fd31b74e97d5ce at 561723ecaadb -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` run the Activity
 value doors on the same inputs. Every row runs one door over 100 distinct
@@ -23,8 +23,8 @@ the validation itself is two string checks.
 
 ## Current figures
 
-Measured on 2026-10-12, 01:53–01:55 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.29–2.86:
+Measured on 2026-10-12, 22:15–22:16 local (UTC-3), at commit `561723e`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 1.96–2.27:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-activity 3
@@ -37,15 +37,15 @@ Haskell (above 1 means Haskell is faster). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `policy.construct` | 7.86 µs | 154 µs | 19.56× | 19.53× | 7.86 µs, 7.87 µs, 7.8 µs | 155 µs, 154 µs, 154 µs |
-| `policy.delay` | 6.91 µs | 16.7 µs | 2.42× | 2.41× | 6.88 µs, 6.91 µs, 6.92 µs | 16.8 µs, 16.7 µs, 16.7 µs |
-| `invocation.construct` | 521 ns | 44.1 µs | 84.54× | 81.47× | 514 ns, 521 ns, 536 ns | 44.1 µs, 44.6 µs, 43.7 µs |
-| `failure.construct` | 45.4 µs | 314 µs | 6.92× | 6.86× | 45.8 µs, 45.4 µs, 45.3 µs | 318 µs, 312 µs, 314 µs |
-| `heartbeat.snapshot` | 58.7 µs | 497 µs | 8.48× | 8.44× | 57.7 µs, 58.7 µs, 58.7 µs | 502 µs, 497 µs, 496 µs |
-| `payload.convert` | 90.4 µs | 380 µs | 4.21× | 4.17× | 90.6 µs, 90.4 µs, 90.2 µs | 378 µs, 381 µs, 380 µs |
-| `definition.call` | 165 µs | 950 µs | 5.76× | 5.75× | 165 µs, 165 µs, 165 µs | 964 µs, 950 µs, 950 µs |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `policy.construct` | 7.73 µs | 153 µs | 19.75× | 19.60× | 3 of 3 | 7.6 µs, 7.73 µs, 7.74 µs | 153 µs, 151 µs, 153 µs |
+| `policy.delay` | 6.91 µs | 16.7 µs | 2.42× | 2.41× | 3 of 3 | 6.84 µs, 6.93 µs, 6.91 µs | 16.7 µs, 16.8 µs, 16.6 µs |
+| `invocation.construct` | 527 ns | 43.8 µs | 83.13× | 82.65× | 3 of 3 | 522 ns, 527 ns, 527 ns | 43.8 µs, 44 µs, 43.6 µs |
+| `failure.construct` | 45.7 µs | 313 µs | 6.84× | 6.82× | 3 of 3 | 45.3 µs, 45.8 µs, 45.7 µs | 310 µs, 313 µs, 314 µs |
+| `heartbeat.snapshot` | 56 µs | 492 µs | 8.78× | 8.78× | 3 of 3 | 55.7 µs, 56 µs, 56.1 µs | 489 µs, 492 µs, 495 µs |
+| `payload.convert` | 86.4 µs | 379 µs | 4.38× | 4.37× | 3 of 3 | 85.6 µs, 86.4 µs, 86.6 µs | 374 µs, 379 µs, 382 µs |
+| `definition.call` | 159 µs | 950 µs | 5.97× | 5.86× | 3 of 3 | 158 µs, 159 µs, 163 µs | 937 µs, 950 µs, 953 µs |
 
 ## How to rerun
 
