@@ -22,6 +22,7 @@ Python, through its Net-definition v3 or Net document v1:
 | Package | What it does | Why |
 | --- | --- | --- |
 | `petrus-net-lint` | Finds the signs of a net whose marking collapsed into one token, in a net's structure and its author's declared outcomes ([README](packages/petrus-net-lint/README.md)). | A net whose state hides inside one token shows nothing a tool can check: what runs at the same time, what waits on what, what is scarce. |
+| `petrus-net-check` | Explores every marking of a net's skeleton for small declared scenarios, and checks its laws, its deadlocks, and that it can always come to rest ([README](packages/petrus-net-check/README.md)). | Sampling schedules, as deterministic simulation testing does, finds bugs but can't show that no schedule deadlocks. |
 
 ## Out of scope
 
