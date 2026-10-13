@@ -293,7 +293,7 @@ spellFailure :: Json -> Text
 spellFailure reason = case reason of
   Object members | Just name <- lookup "name" members ->
     let message = fromMaybe Null (lookup "message" members)
-     in if truthy message then strOf name <> ": " <> strOf message else strOf name
+     in if pythonTruthy message then strOf name <> ": " <> strOf message else strOf name
   _ -> either (const (pythonRepr reason)) TE.decodeUtf8 (dumps defaultDumps reason)
   where
     strOf = \case
@@ -325,16 +325,6 @@ decodeFailure reason = case lookupMember "petrus_failure" reason of
         , failureRetryAfter = retryAfter
         }
   _ -> simpleFailure (spellFailure reason)
-
-truthy :: Json -> Bool
-truthy = \case
-  Null -> False
-  Bool b -> b
-  Int i -> i /= 0
-  Float d -> d /= 0
-  String s -> not (T.null s)
-  Array xs -> not (null xs)
-  Object ms -> not (null ms)
 
 -- ---------------------------------------------------------------------------
 -- Sessions

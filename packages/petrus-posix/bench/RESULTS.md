@@ -116,6 +116,30 @@ narrowed `flock.open-tryLock-close` from 0.93× to 0.97×.
 The bench builds its paths once, fully evaluated, as the Python twin
 binds them once.
 
+## `writeDirect`
+
+`Petrus.Posix.File.writeDirect` is `writeAll` through an `unsafe` foreign
+`write`, for a `DirectFd`, which only `directFd` makes, from a descriptor
+`fstat` reports as a regular file or a character device: there a `write`
+never waits for a reader, so running it on the calling capability is the
+synchronous write Node's `console.log` makes to a file or a terminal.
+`writeAll` stays a safe call (`fdWriteBuf`) for everything else, the
+atomic-replace writes and the archive extraction among them, and is what
+this file's rows measure.
+
+The measurement is where the call is used, in petrus-viewer-server's
+benchmark (its bench/RESULTS.md, "Low-level code, measured"):
+`petrus-mcp` logs every bridge request to standard error, `/dev/null` in
+the benchmark. With 16 calls in flight, a safe `write` per line released
+the capability on every line while other threads were runnable, and
+another OS thread had to take it and give it back. Interleaved, five
+rounds (2026-10-13, 04:47–04:48, load average 3.0–3.1), the build with
+`writeAll` served 0.74× the calls of the one with the unsafe `write`
+(0.72–0.80× per round, behind it in every round) and fell behind Node's
+`server/mcp.mjs` (0.92× by the median of the rounds, against 1.18× for
+the unsafe build). One call at a time it was 0.98× and 0.99×, and the
+logging relay had lost 2–6% to it.
+
 ## Earlier tables
 
 ### 2026-10-11, 00:54–00:59

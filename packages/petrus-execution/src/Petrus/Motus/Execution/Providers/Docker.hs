@@ -30,7 +30,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Petrus.Json (Json (..))
+import Petrus.Json (Json (..), pythonTruthy)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, workspaceArchive)
 import Petrus.Motus.Execution.Internal.Common
@@ -175,16 +175,6 @@ anyM predicate = \case
   [] -> pure False
   item : rest -> predicate item >>= \found -> if found then pure True else anyM predicate rest
 
-truthy :: Json -> Bool
-truthy = \case
-  Null -> False
-  Bool b -> b
-  Int n -> n /= 0
-  Float d -> d /= 0
-  String t -> not (T.null t)
-  Array items -> not (null items)
-  Object members -> not (null members)
-
 inspect :: DockerEnvironment -> Text -> IO Json
 inspect env container = do
   result <- docker env ["inspect", container] True Nothing (dockerTimeout (dockerConfig env))
@@ -202,7 +192,7 @@ dockerLookup env operation = do
       mounts <- iterate' =<< index "Mounts" info
       bind <- anyM (fmap (== String "bind") . index "Type") mounts
       when bind (throwExecution RuntimeError "execution container unexpectedly has a bind mount")
-      running <- truthy <$> (index "Running" =<< index "State" info)
+      running <- pythonTruthy <$> (index "Running" =<< index "State" info)
       Just <$> either throwIO pure (mkEnvironmentLease operation providerLabel container dockerCapabilities (if running then Ready else Terminal))
     _ -> throwExecution RuntimeError ("operation " <> pythonStrRepr operation <> " resolves to multiple containers")
 

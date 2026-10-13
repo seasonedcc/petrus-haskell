@@ -19,10 +19,10 @@ short = T.take 7
 
 -- | @f"{kind}:{body}"@ for a dict body.
 entry :: Text -> [(Text, PyValue)] -> Text
-entry kind body = kind <> ":" <> repr (PyDict [(PyStr k, v) | (k, v) <- body])
+entry kind body = kind <> ":" <> repr (LitDict [(LitStr k, v) | (k, v) <- body])
 
 s :: Text -> PyValue
-s = PyStr
+s = LitStr
 
 -- | @state(**overrides)@: dict.update keeps the original key order.
 state :: [(Text, PyValue)] -> Text
@@ -33,15 +33,15 @@ state overrides =
     [ ("phase", s "running")
     , ("head", s headSha)
     , ("base", s baseSha)
-    , ("mergeable", PyBool True)
+    , ("mergeable", LitBool True)
     , ("policy", s policySha)
-    , ("strict_base", PyBool True)
-    , ("base_current", PyBool True)
+    , ("strict_base", LitBool True)
+    , ("base_current", LitBool True)
     ]
 
 human :: Bool -> Bool -> Integer -> Text
 human approval changes unresolved =
-  entry "human" [("approval", PyBool approval), ("changes_requested", PyBool changes), ("unresolved", PyInt unresolved)]
+  entry "human" [("approval", LitBool approval), ("changes_requested", LitBool changes), ("unresolved", LitInt unresolved)]
 
 noHuman :: Text
 noHuman = human False False 0
@@ -106,7 +106,7 @@ spec = describe "board" $ do
         render
           [ state []
           , checks "success"
-          , entry "findings" [("head", s headSha), ("blocking", PyInt 2), ("count", PyInt 3)]
+          , entry "findings" [("head", s headSha), ("blocking", LitInt 2), ("count", LitInt 3)]
           , entry "review" [("head", s headSha), ("status", s "blocking")]
           ]
       board `contains` "❌ 2 blocking finding(s) of 3"
@@ -122,12 +122,12 @@ spec = describe "board" $ do
       board `contains` "waiting on humans — 1 unresolved review thread(s)"
 
     it "a stale base asks the author to update the branch" $ do
-      board <- render [state [("base_current", PyBool False)], checks "success"]
+      board <- render [state [("base_current", LitBool False)], checks "success"]
       board `contains` ("⚠️ base is stale — the target branch moved past `" <> short baseSha <> "`")
       row board "Base" `shouldReturn` ("| Base | ⚠️ behind `" <> short baseSha <> "` |")
 
     it "a merge conflict asks the author to resolve" $ do
-      board <- render [state [("mergeable", PyBool False)], checks "success"]
+      board <- render [state [("mergeable", LitBool False)], checks "success"]
       board `contains` "❌ merge conflict"
       row board "Conflicts" `shouldReturn` "| Conflicts | ❌ merge conflict |"
 
@@ -137,7 +137,7 @@ spec = describe "board" $ do
           [ state []
           , human True False 0
           , checks "success"
-          , entry "findings" [("head", s headSha), ("blocking", PyInt 0), ("count", PyInt 0)]
+          , entry "findings" [("head", s headSha), ("blocking", LitInt 0), ("count", LitInt 0)]
           , entry "review" [("head", s headSha), ("status", s "clear")]
           , entry "announced" [("head", s headSha)]
           ]

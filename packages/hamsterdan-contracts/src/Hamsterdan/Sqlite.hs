@@ -101,7 +101,10 @@ execute connection sql parameters = translated . withStatement connection sql $ 
 -- CPython's @sqlite3@ does: a text it cannot encode as UTF-8 (a surrogate a
 -- JSON reader kept from an escape), and a text or a blob longer than
 -- @INT_MAX@ bytes (petrus-sqlite's 'bindLength', the @OverflowError@ CPython
--- raises where SQLite's @int@ length would wrap).
+-- raises where SQLite's @int@ length would wrap). Both checks of a
+-- parameter are one pure 'Either' (encoding first, then length, CPython's
+-- order), raised once; petrus-sqlite's 'Petrus.Sqlite.Connection.checkBindLength'
+-- is the length check alone, for its own bind loop in 'IO'.
 bindChecked :: Statement -> [SQLData] -> IO ()
 bindChecked statement parameters = do
   mapM_ (either throwIO pure . refusal) parameters

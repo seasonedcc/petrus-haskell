@@ -1094,24 +1094,59 @@ call, and the encoder goes through a `Text` and a `Builder` where the C
 routine sizes the output and writes it in two passes. Each module's
 header points here.
 
-**The relay timing log's write** (2026-10-13, 02:07–02:08 local, load
-average 3.29 → 4.32; `--reps 7 --only relay`). On a file or a terminal
-(the benchmark's `/dev/null` is one), each relay log line was one `write`
-through an `unsafe` foreign import of `Petrus.Viewer.Log`'s own. The clean
-version is petrus-posix's `writeAll`, a `safe` call (`clean`, the main
-build; `unsafe`, the variant). The figures are ops/s of `petrus` with the
-log on, medians of the 7 rounds; "/ Node" is against the best Node server
-of each round, the bare baseline, which logs nothing.
+**The timing logs' write** (`Petrus.Viewer.Log`'s direct logger). To a
+file or a character device (a terminal; the benchmark's `/dev/null` is
+one), the relay's `[petrus-relay-perf]` lines and `petrus-mcp`'s
+`[petrus-perf]` lines are each one `write` from the thread that logs,
+synchronous as Node's `console.log` is there. Two ways of making it were
+measured: petrus-posix's `writeAll`, a `safe` foreign call, and an
+`unsafe` `write`, which keeps the capability for the call as Node's
+synchronous write keeps its event loop.
 
-| scenario | clean | unsafe | clean / unsafe | clean / Node | unsafe / Node |
+First on the logging relay (2026-10-13, 02:07–02:08 local, load average
+3.29 → 4.32; `--reps 7 --only relay`; `safe` against `unsafe`, ops/s of
+`petrus` with the log on, medians of the 7 rounds; "/ Node" against the
+bare baseline, which logs nothing):
+
+| scenario | safe | unsafe | safe / unsafe | safe / Node | unsafe / Node |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | relay round trip, 1 pair | 13402 | 13611 | 0.98x (2 of 7) | 1.17x | 1.19x |
 | relay round trip, 16 pairs | 59931 | 63844 | 0.94x (2 of 7) | 1.41x | 1.54x |
 
-The safe call costs 2–6% of the logging relay's throughput, and the
-logging relay stays ahead of Node's best in every round (lowest round
-1.16x and 1.35x; against the Vite dev server, which logs like it, 1.35x
-and 1.99x by the median). The unsafe import was removed.
+The relay stayed ahead of Node with the safe call, so the unsafe one was
+removed. That left `petrus-mcp`, which logs every bridge request to
+standard error, unmeasured: with 16 calls in flight it fell from about
+20k calls/s (run J) to about 14.8k in the next full run, below Node's
+`server/mcp.mjs` (0.97x). The two builds, interleaved on the MCP rows
+(2026-10-13, 04:47–04:48 local, load average 3.0–3.1; `--reps 5 --only
+MCP`; `safe` is the main build, `unsafe` the variant):
+
+| scenario | safe | unsafe | safe / unsafe | safe / Node | unsafe / Node |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| MCP petrus_inspect_document, 1 call at a time | 6149 | 6349 | 0.98x (0 of 5) | 1.23x | 1.26x |
+| MCP petrus_inspect_document, 16 calls in flight | 14099 | 18520 | 0.74x (0 of 5) | 0.92x | 1.18x |
+| MCP petrus_status, 1 call at a time | 8274 | 8330 | 0.99x (2 of 5) | 1.24x | 1.25x |
+
+A safe call releases the capability. With other threads runnable (16
+calls in flight), the runtime hands the capability to another OS thread
+for them and takes it back after the `write`, on every line; the server's
+system time per call was 20 us with the safe call against 9.4 us with the
+unsafe one. With one call at a time nothing else is runnable and the two
+are within 2%. The safe call left the 16-call row behind Node in every
+round, so the unsafe write is back, now as petrus-posix's `writeDirect`,
+behind a safe interface: it takes a `DirectFd`, which `directFd` makes
+only for a descriptor `fstat` reports as a regular file or a character
+device, where a `write` never waits for a reader. Pipes and sockets
+still go to the background writer (`newAsyncLogger`), so a slow reader
+never stalls the server. The lines and their order are unchanged, and
+nothing is buffered: each line is written before `logLine` returns.
+
+A writer thread for files and character devices too was not taken: it
+would keep the system call off the request path, but every line would
+then wake a second thread, the hand-off that cost the relay about 25% of
+its 1-pair throughput in run C, and lines still queued when the process
+exits would be lost, where Node's synchronous write has already made
+them.
 
 ## Where a request spends its time on Linux
 
@@ -1329,8 +1364,9 @@ runtime would pick, stated as `-A4m` (see "What the Haskell side does").
     16 calls in flight, the server without them answered 0.63x the calls
     (see "Low-level code, measured").
   - `PETRUS_PERF` lines go to standard error like the relay's timing
-    lines: one `write` to a file or a terminal (petrus-posix's `writeAll`,
-    since the measurement in "Low-level code, measured"), a background
+    lines: one `write` to a file or a terminal (petrus-posix's unsafe
+    `writeDirect`; with the safe `writeAll`, 16 calls in flight ran at
+    0.74x and behind Node, see "Low-level code, measured"), a background
     writer for a pipe.
 - **HTTP handlers.** File reads are unsafe foreign calls shaped like
   `readFileSync`: one call opens the file and learns its size

@@ -54,7 +54,7 @@ module Petrus.Impetus.Validation.Pydantic
 import Data.Bifunctor (first)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (Json (..))
+import Petrus.Json (Json (..), PyNumber (..), pyNumberEq)
 import Petrus.Json.Python.Object (PyObject (..), fromJson, fromRaw, pyRepr, pyStr, pyTypeName)
 import Petrus.Json.Python.Pydantic (Loc (..), LineError (..))
 import Petrus.Json.Python.Pydantic qualified as Pydantic
@@ -254,7 +254,7 @@ literalStr options = \case
 literalInt :: Integer -> PV -> Validated Integer
 literalInt expected = \case
   PyInt i | i == expected -> Right expected
-  PyFloat d | not (isNaN d || isInfinite d) && toRational d == fromInteger expected -> Right expected
+  PyFloat d | pyNumberEq (PyInexact d) (PyExact expected) -> Right expected
   other -> Left [LineError [] ("Input should be " <> T.pack (show expected)) "literal_error" other]
 
 -- | A strict @int@ (never a @bool@ or @float@) within inclusive bounds.

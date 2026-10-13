@@ -36,7 +36,7 @@ parsed :: Text -> Either PythonException (Maybe (Text, Body))
 parsed entry = case T.breakOn ":" entry of
   (_, "") -> Right Nothing
   (kind, rest) -> case literalEval (T.drop 1 rest) of
-    Right (PyDict body) -> Right (Just (kind, body))
+    Right (LitDict body) -> Right (Just (kind, body))
     Right _ -> Right Nothing
     Left e -> case e.errorKind of
       -- @literal_eval@'s TypeError escapes the reference's
@@ -46,7 +46,7 @@ parsed entry = case T.breakOn ":" entry of
 
 -- | @body.get(key)@ for a string key.
 getV :: Text -> Body -> Maybe PyValue
-getV key body = snd <$> find (pyEq (PyStr key) . fst) body
+getV key body = snd <$> find (pyEq (LitStr key) . fst) body
 
 getOr :: Text -> PyValue -> Body -> PyValue
 getOr key fallback body = maybe fallback id (getV key body)
@@ -54,19 +54,19 @@ getOr key fallback body = maybe fallback id (getV key body)
 -- | @str(value)@.
 str :: PyValue -> Text
 str = \case
-  PyStr s -> s
+  LitStr s -> s
   other -> repr other
 
 truthy :: PyValue -> Bool
 truthy = \case
-  PyNone -> False
-  PyBool b -> b
-  PyInt i -> i /= 0
-  PyFloat d -> d /= 0
-  PyStr s -> not (T.null s)
-  PyList xs -> not (null xs)
-  PyTuple xs -> not (null xs)
-  PyDict xs -> not (null xs)
+  LitNone -> False
+  LitBool b -> b
+  LitInt i -> i /= 0
+  LitFloat d -> d /= 0
+  LitStr s -> not (T.null s)
+  LitList xs -> not (null xs)
+  LitTuple xs -> not (null xs)
+  LitDict xs -> not (null xs)
 
 -- | @int(value or 0)@.
 intOr0 :: PyValue -> Either PythonException Integer
@@ -75,17 +75,17 @@ intOr0 v = if truthy v then pyInt v else Right 0
 -- | @int(value)@ for a literal value.
 pyInt :: PyValue -> Either PythonException Integer
 pyInt = \case
-  PyBool b -> Right (if b then 1 else 0)
-  PyInt i -> Right i
-  PyFloat d
+  LitBool b -> Right (if b then 1 else 0)
+  LitInt i -> Right i
+  LitFloat d
     | isNaN d -> Left (valueError "cannot convert float NaN to integer")
     | isInfinite d -> Left (pythonError "OverflowError" "cannot convert float infinity to integer")
     | otherwise -> Right (truncate d)
-  PyStr s -> intText s
-  PyNone -> Left (notReal "NoneType")
-  PyList _ -> Left (notReal "list")
-  PyTuple _ -> Left (notReal "tuple")
-  PyDict _ -> Left (notReal "dict")
+  LitStr s -> intText s
+  LitNone -> Left (notReal "NoneType")
+  LitList _ -> Left (notReal "list")
+  LitTuple _ -> Left (notReal "tuple")
+  LitDict _ -> Left (notReal "dict")
   where
     notReal t = typeError ("int() argument must be a string, a bytes-like object or a real number, not '" <> t <> "'")
 
@@ -117,13 +117,13 @@ collect = go (Facts [] [] [] Nothing [])
         Just (kind, body) -> go (absorb facts {latest = assign kind body facts.latest} kind body) rest
     absorb facts kind body = case kind of
       "fault" ->
-        let key = (str (getOr "where" (PyStr "") body), str (getOr "op" (PyStr "") body))
-            status = getOr "status" PyNone body
-         in if any (pyEq status . PyStr) ["resolved", "cancelled"]
+        let key = (str (getOr "where" (LitStr "") body), str (getOr "op" (LitStr "") body))
+            status = getOr "status" LitNone body
+         in if any (pyEq status . LitStr) ["resolved", "cancelled"]
               then facts {faults = remove key facts.faults}
               else facts {faults = assign key body facts.faults}
-      "mutation_pending" -> facts {mutations = assign (str (getOr "op_key" (PyStr "") body)) body facts.mutations}
-      "mutation_settled" -> facts {mutations = remove (str (getOr "op_key" (PyStr "") body)) facts.mutations}
+      "mutation_pending" -> facts {mutations = assign (str (getOr "op_key" (LitStr "") body)) body facts.mutations}
+      "mutation_settled" -> facts {mutations = remove (str (getOr "op_key" (LitStr "") body)) facts.mutations}
       "human_needed" -> facts {humanNeeded = Just body}
       -- fresh CI evidence obsoletes the exhausted-ladder escalation
       "checks" -> facts {humanNeeded = Nothing}
@@ -136,7 +136,7 @@ short :: PyValue -> Text
 short = T.take 7 . str
 
 is :: Text -> Maybe PyValue -> Bool
-is expected = maybe False (pyEq (PyStr expected))
+is expected = maybe False (pyEq (LitStr expected))
 
 verdict :: Facts -> Either PythonException Text
 verdict facts
@@ -144,7 +144,7 @@ verdict facts
   | is "quiescent" (getV "phase" state) = Right "paused — draft PR. I resume when it leaves draft."
   | ((_, op), body) : _ <- facts.faults =
       Right
-        ( "⚠️ needs attention — operation `" <> op <> "` faulted: " <> str (getOr "reason" (PyStr "") body)
+        ( "⚠️ needs attention — operation `" <> op <> "` faulted: " <> str (getOr "reason" (LitStr "") body)
             <> ". Ask me to recover it."
         )
   | Just _ <- facts.humanNeeded =
@@ -152,10 +152,10 @@ verdict facts
   | not (null facts.mutations) = Right ("🔧 working — I'm pushing an update to `" <> headShort <> "`.")
   | checks == "failure" = Right ("❌ CI failed for `" <> headShort <> "`. **Author:** fix and push; I re-evaluate the new head.")
   | otherwise = do
-      blocking <- intOr0 (getOr "blocking" (PyInt 0) findings)
+      blocking <- intOr0 (getOr "blocking" (LitInt 0) findings)
       if blocking > 0
         then
-          let b = getOr "blocking" PyNone findings
+          let b = getOr "blocking" LitNone findings
            in Right
                 ( "❌ " <> str b <> " blocking finding(s) of " <> str (getOr "count" b findings) <> " on `" <> headShort
                     <> "`. **Author:** see the review findings."
@@ -164,14 +164,14 @@ verdict facts
           if is "unable" (getV "status" review)
             then
               Right
-                ( "⚠️ I could not review `" <> headShort <> "` (" <> str (getOr "category" (PyStr "unable") review)
+                ( "⚠️ I could not review `" <> headShort <> "` (" <> str (getOr "category" (LitStr "unable") review)
                     <> "). Push a new head or ask me to retry."
                 )
             else
-              if truthy (getOr "changes_requested" PyNone human)
+              if truthy (getOr "changes_requested" LitNone human)
                 then Right ("waiting on author — a reviewer requested changes on `" <> headShort <> "`.")
                 else do
-                  unresolved <- intOr0 (getOr "unresolved" (PyInt 0) human)
+                  unresolved <- intOr0 (getOr "unresolved" (LitInt 0) human)
                   Right (afterHuman unresolved)
   where
     state = concern "state" facts
@@ -179,22 +179,22 @@ verdict facts
     findings = concern "findings" facts
     human = concern "human" facts
     checks = checksStatus facts
-    headShort = short (getOr "head" (PyStr "") state)
+    headShort = short (getOr "head" (LitStr "") state)
     afterHuman unresolved
       | unresolved > 0 =
-          "waiting on humans — " <> str (getOr "unresolved" PyNone human) <> " unresolved review thread(s) on `" <> headShort <> "`."
-      | not (truthy (getOr "base_current" (PyBool False) state)) =
-          "⚠️ base is stale — the target branch moved past `" <> short (getOr "base" (PyStr "") state)
+          "waiting on humans — " <> str (getOr "unresolved" LitNone human) <> " unresolved review thread(s) on `" <> headShort <> "`."
+      | not (truthy (getOr "base_current" (LitBool False) state)) =
+          "⚠️ base is stale — the target branch moved past `" <> short (getOr "base" (LitStr "") state)
             <> "`. **Author:** update the branch."
-      | not (truthy (getOr "mergeable" (PyBool True) state)) = "❌ merge conflict on `" <> headShort <> "`. **Author:** resolve and push."
+      | not (truthy (getOr "mergeable" (LitBool True) state)) = "❌ merge conflict on `" <> headShort <> "`. **Author:** resolve and push."
       | checks `elem` ["pending", "queued", "in_progress"] = "⏳ waiting on CI for `" <> headShort <> "`. Nothing for you to do."
       | not (is "clear" (getV "status" review)) = "⏳ reviewing `" <> headShort <> "`. Nothing for you to do."
-      | not (truthy (getOr "approval" (PyBool False) human)) =
+      | not (truthy (getOr "approval" (LitBool False) human)) =
           "waiting on human approval for `" <> headShort <> "` — everything on my side is clear."
       | otherwise = "✅ all gates clear for `" <> headShort <> "` — see the readiness advisory. Merging stays yours."
 
 checksStatus :: Facts -> Text
-checksStatus facts = str (getOr "status" (PyStr "pending") (concern "checks" facts))
+checksStatus facts = str (getOr "status" (LitStr "pending") (concern "checks" facts))
 
 checksCell :: Text -> Text
 checksCell = \case
@@ -216,31 +216,31 @@ reviewCellOf = \case
 reviewCell :: Facts -> Either PythonException Text
 reviewCell facts
   | status == "unable" =
-      let category = str (getOr "category" (PyStr "") review)
+      let category = str (getOr "category" (LitStr "") review)
        in Right (if category `elem` ["", "unable"] then cell else cell <> " · " <> category)
   | Just raw <- getV "count" findings = do
       count <- intOr0 raw
       Right
         ( if count == 0
             then cell <> " · 0 findings"
-            else cell <> " · " <> str (getOr "blocking" (PyInt 0) findings) <> " blocking of " <> T.pack (show count) <> " finding(s)"
+            else cell <> " · " <> str (getOr "blocking" (LitInt 0) findings) <> " blocking of " <> T.pack (show count) <> " finding(s)"
         )
   | otherwise = Right cell
   where
     review = concern "review" facts
     findings = concern "findings" facts
-    status = str (getOr "status" (PyStr "pending") review)
+    status = str (getOr "status" (LitStr "pending") review)
     cell = reviewCellOf status
 
 humanCell :: Facts -> Text
 humanCell facts
   | null human = "⏳ no review yet"
-  | otherwise = approval <> " · " <> str (getOr "unresolved" (PyInt 0) human) <> " unresolved thread(s)"
+  | otherwise = approval <> " · " <> str (getOr "unresolved" (LitInt 0) human) <> " unresolved thread(s)"
   where
     human = concern "human" facts
     approval
-      | truthy (getOr "changes_requested" PyNone human) = "❌ changes requested"
-      | truthy (getOr "approval" PyNone human) = "✅ approved"
+      | truthy (getOr "changes_requested" LitNone human) = "❌ changes requested"
+      | truthy (getOr "approval" LitNone human) = "✅ approved"
       | otherwise = "⏳ not approved"
 
 rows :: Facts -> Either PythonException [(Text, Text)]
@@ -250,20 +250,20 @@ rows facts = do
     [ ("CI checks", checksCell (checksStatus facts))
     , ("Dan's review", review)
     , ("Human review", humanCell facts)
-    , ("Base", if truthy (getOr "base_current" PyNone state) then "✅ current with `" <> base <> "`" else "⚠️ behind `" <> base <> "`")
-    , ("Conflicts", if truthy (getOr "mergeable" (PyBool True) state) then "✅ none" else "❌ merge conflict")
+    , ("Base", if truthy (getOr "base_current" LitNone state) then "✅ current with `" <> base <> "`" else "⚠️ behind `" <> base <> "`")
+    , ("Conflicts", if truthy (getOr "mergeable" (LitBool True) state) then "✅ none" else "❌ merge conflict")
     ]
   where
     state = concern "state" facts
-    base = short (getOr "base" (PyStr "") state)
+    base = short (getOr "base" (LitStr "") state)
 
 attention :: Facts -> [Text]
 attention facts =
-  [ "- ⚠️ " <> wherePart <> " operation `" <> op <> "` faulted: " <> str (getOr "reason" (PyStr "") body) <> " — ask me to recover it."
+  [ "- ⚠️ " <> wherePart <> " operation `" <> op <> "` faulted: " <> str (getOr "reason" (LitStr "") body) <> " — ask me to recover it."
   | ((wherePart, op), body) <- facts.faults
   ]
-    ++ ["- 🔧 push in flight: `" <> str (getOr "op" (PyStr "") body) <> "`." | (_, body) <- facts.mutations]
-    ++ [ "- ❌ CI failure `" <> short (getOr "fingerprint" (PyStr "") body) <> "` exhausted automated reruns — a human needs to look."
+    ++ ["- 🔧 push in flight: `" <> str (getOr "op" (LitStr "") body) <> "`." | (_, body) <- facts.mutations]
+    ++ [ "- ❌ CI failure `" <> short (getOr "fingerprint" (LitStr "") body) <> "` exhausted automated reruns — a human needs to look."
        | Just body <- [facts.humanNeeded]
        ]
     ++ ["- ⚠️ unrecognized: `" <> entry <> "`" | entry <- facts.unparsed]
@@ -286,7 +286,7 @@ gateFacts entries = do
 gateFactsValue :: [Text] -> Either PythonException PyValue
 gateFactsValue entries = do
   view <- gateFacts entries
-  Right (PyList [PyDict [(PyStr "kind", PyStr kind), (PyStr "body", PyDict body)] | (kind, body) <- view])
+  Right (LitList [LitDict [(LitStr "kind", LitStr kind), (LitStr "body", LitDict body)] | (kind, body) <- view])
 
 -- | @render_board(entries)@.
 renderBoard :: [Text] -> Either PythonException Text
@@ -298,7 +298,7 @@ renderBoard entries = do
       sections =
         ["## Hamsterdan summary — " <> headline, "| Gate | State |\n|------|-------|\n" <> table]
           ++ [T.intercalate "\n" lines' | let lines' = attention facts, not (null lines')]
-          ++ [ "<sub>head " <> str h <> " on base " <> str (getOr "base" (PyStr "") state) <> "</sub>"
+          ++ [ "<sub>head " <> str h <> " on base " <> str (getOr "base" (LitStr "") state) <> "</sub>"
              | Just h <- [getV "head" state]
              , truthy h
              ]

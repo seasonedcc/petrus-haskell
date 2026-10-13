@@ -53,6 +53,7 @@ import Hamsterdan.Python.Object
 import Hamsterdan.Python.Hashlib (sha256Hex)
 import Hamsterdan.Python.Text (splitlinesUtf8, strRepr)
 import Hamsterdan.Python.Text qualified as Py
+import Hamsterdan.PyLiteral (PyValue (..))
 import Hamsterdan.PyLiteral qualified as Lit
 import Hamsterdan.Readiness.NetV5.Board (renderBoard)
 import Petrus.Json (Json (..))
@@ -916,7 +917,7 @@ writeHistory out source records reporter = do
     gap
       reporter
       ( "canonical History carries schema versions "
-          <> Lit.repr (Lit.PyList (map Lit.PyStr spelled))
+          <> Lit.repr (LitList (map LitStr spelled))
           <> ", expected "
           <> tshow historySchema
       )

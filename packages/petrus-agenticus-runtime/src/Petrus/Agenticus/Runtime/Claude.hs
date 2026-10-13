@@ -46,7 +46,6 @@ module Petrus.Agenticus.Runtime.Claude
   , sanitize
   , projectBinding
   , firstVersion
-  , pyTruthy
   , cliWrapperSource
   , installCliWrapper
     -- * Continuations
@@ -497,17 +496,6 @@ firstVersion = go False . T.unpack
     dot = \case
       '.' : rest -> Just rest
       _ -> Nothing
-
--- | Python truthiness of a JSON value.
-pyTruthy :: Json -> Bool
-pyTruthy = \case
-  Null -> False
-  Bool b -> b
-  Int i -> i /= 0
-  Float d -> d /= 0
-  String t -> not (T.null t)
-  Array values -> not (null values)
-  Object members -> not (null members)
 
 -- | A Python number as the reference's defaults spell it: whole values as
 -- integers.
@@ -1700,7 +1688,7 @@ execute a operation = do
         forM_ prior $ \p -> when (session /= p.sessionId) $ protocol "session-mismatch"
         (projectKey, transcript) <- storeSnapshot store session
         live
-        if result.subtype /= String "success" || pyTruthy result.isError || result.terminalReason /= String "completed"
+        if result.subtype /= String "success" || J.pythonTruthy result.isError || result.terminalReason /= String "completed"
           then set (\s -> s {code = "provider-failed"})
           else do
             claim operation >>= maybe (pure ()) protocol

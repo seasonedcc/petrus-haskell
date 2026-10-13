@@ -67,7 +67,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (Json (..), parseJson, pythonDict, surrogateRefusingLoads)
+import Petrus.Json (Json (..), PyNumber (..), parseJson, pyNumberEq, pythonDict, surrogateRefusingLoads)
 
 -- | A JSON object's members in order.
 type Object = [(Text, Json)]
@@ -198,7 +198,7 @@ literal expected actual
     sameLiteral (String a) (String b) = a == b
     sameLiteral (Int a) (Int b) = a == b
     sameLiteral (Int a) (Bool b) = a == (if b then 1 else 0)
-    sameLiteral (Int a) (Float b) = not (isNaN b || isInfinite b) && toRational b == fromInteger a
+    sameLiteral (Int a) (Float b) = pyNumberEq (PyExact a) (PyInexact b)
     sameLiteral _ _ = False
 
 -- | A strict, @extra="forbid"@ record named after its pydantic class.

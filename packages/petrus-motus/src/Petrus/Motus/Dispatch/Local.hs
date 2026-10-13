@@ -1341,7 +1341,7 @@ data PyValue = PyInt Integer | PyFloat Double | PyText Text | PyBytes BS.ByteStr
 instance Eq PyValue where
   PyInt a == PyInt b = a == b
   PyFloat a == PyFloat b = a == b
-  PyInt a == PyFloat b = not (isNaN b || isInfinite b) && toRational b == fromInteger a
+  PyInt a == PyFloat b = pyNumberEq (PyExact a) (PyInexact b)
   PyFloat a == PyInt b = PyInt b == PyFloat a
   PyText a == PyText b = a == b
   PyBytes a == PyBytes b = a == b

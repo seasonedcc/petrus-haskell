@@ -27,7 +27,6 @@ import Foreign.Storable (pokeByteOff)
 import GHC.Clock (getMonotonicTimeNSec)
 import Petrus.Posix.File qualified as Posix
 import System.IO (Handle, hFlush, stdout)
-import System.Posix.Files (getFdStatus, isCharacterDevice, isRegularFile)
 import System.Posix.Types (Fd (..))
 
 -- | @new Date().toISOString()@: millisecond precision, UTC, @Z@ suffix.
@@ -78,7 +77,7 @@ data Logger
   = -- | lines are written by a background thread, batched
     AsyncLogger (TQueue ByteString)
   | -- | each line is one @write@ to the descriptor, from the logging thread
-    DirectLogger CInt (MVar ())
+    DirectLogger Posix.DirectFd (MVar ())
 
 -- | 'logLine' only enqueues; a background thread writes whatever has
 -- accumulated in one call and flushes. Lines keep their order. For hot
@@ -103,23 +102,26 @@ newAsyncLogger cap h = do
 -- Node's @console.log@ / @console.error@ write it. Node writes
 -- synchronously to files and terminals, and asynchronously to pipes
 -- (macOS) and sockets: to a file or a character device (a terminal,
--- @/dev/null@) each line is one @write@ from the thread that logs it
--- (petrus-posix's safe 'Petrus.Posix.File.writeAll': a system call and no
--- hand-off to a writer thread; an unsafe call measured 2-6% faster on the
--- logging relay, which stays ahead of Node without it, bench/RESULTS.md,
--- "Low-level code, measured"); to anything else
+-- @/dev/null@) each line is one @write@ from the thread that logs it,
+-- with petrus-posix's 'Petrus.Posix.File.writeDirect': an unsafe call,
+-- which keeps the capability as Node's synchronous write keeps its event
+-- loop, with no hand-off to a writer thread or to another OS thread. The
+-- safe 'Petrus.Posix.File.writeAll' hands the capability to another OS
+-- thread and back on every line when other threads are runnable: with 16
+-- calls in flight, @petrus-mcp@ (which logs every bridge request) served
+-- 0.74x the calls with it and fell behind Node, and the logging relay lost
+-- 2-6% (bench/RESULTS.md, "Low-level code, measured"). To anything else
 -- the lines go through 'newAsyncLogger', so a slow reader never stalls the
 -- caller.
 newConsoleLogger :: Int -> Handle -> CInt -> IO Logger
 newConsoleLogger cap h fd = do
-  status <- try @SomeException (getFdStatus (fromIntegral fd))
-  case status of
-    Right st
-      | isRegularFile st || isCharacterDevice st -> do
-          -- lines already buffered in the Handle go first
-          hFlush h
-          DirectLogger fd <$> newMVar ()
-    _ -> newAsyncLogger cap h
+  direct <- Posix.directFd (Fd fd)
+  case direct of
+    Just target -> do
+      -- lines already buffered in the Handle go first
+      hFlush h
+      DirectLogger target <$> newMVar ()
+    Nothing -> newAsyncLogger cap h
 
 -- | The relay timing log on standard output ('newConsoleLogger'; the
 -- relay's loop logs every request and response).
@@ -129,5 +131,5 @@ newStdoutLogger cap = newConsoleLogger cap stdout 1
 logLine :: Logger -> ByteString -> IO ()
 logLine (AsyncLogger q) line = atomically (writeTQueue q line)
 -- A closed or broken stream drops the line, as the async logger does.
-logLine (DirectLogger fd lock) line =
-  withMVar lock $ \() -> void (try @IOException (Posix.writeAll (Fd fd) (line <> "\n")))
+logLine (DirectLogger target lock) line =
+  withMVar lock $ \() -> void (try @IOException (Posix.writeDirect target (line <> "\n")))

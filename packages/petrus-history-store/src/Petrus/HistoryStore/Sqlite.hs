@@ -83,7 +83,7 @@ import Petrus.HistoryStore.Internal (HistoryStoreError (..), decodeStored, pytho
 import Petrus.Impetus.History.Codec (encodeRecord, historyLoads)
 import Petrus.Impetus.History.Records (Record, recordName, recordOccurrence, recordTerminalFamily, terminalFamilyNames)
 import Petrus.Impetus.HistoryStore
-import Petrus.Json (EncodeOptions (..), Json (..), compact, dumpsMany, encodeErrorMessage, jsonTypeName, lookupMember, parseJson)
+import Petrus.Json (EncodeOptions (..), Json (..), PyNumber (..), compact, dumpsMany, encodeErrorMessage, jsonTypeName, lookupMember, parseJson, pyNumberEq)
 import Petrus.Posix.Path (purePath)
 import Petrus.Sqlite.Connection (Connection, Param (..), SQLData (..))
 import Petrus.Sqlite.Connection qualified as Sql
@@ -401,7 +401,7 @@ sameInteger value n = case value of
   _ -> False
 
 floatEqualsInteger :: Double -> Integer -> Bool
-floatEqualsInteger d n = not (isNaN d || isInfinite d) && fromIntegral (truncate d :: Integer) == d && truncate d == n
+floatEqualsInteger d n = pyNumberEq (PyInexact d) (PyExact n)
 
 -- | @encoded.get("occurrence") == occurrence@ under Python equality.
 sameOccurrence :: Maybe Json -> SQLData -> Bool

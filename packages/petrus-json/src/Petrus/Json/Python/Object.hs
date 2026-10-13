@@ -7,10 +7,11 @@
 -- @json.loads@ builds ('fromJson', 'pythonRepr'), and the dynamic values
 -- Hamsterdan's exporter and operator read (@Hamsterdan.Python.Object.PV@
 -- is a synonym for it, as petrus-impetus's validation @PV@ is). Two
--- narrower models stay apart on purpose and share 'pyNumberEq', the
--- numeric core of '==': petrus-engine-file's @Value@ (jiter's duplicate
--- keys and NaN identity) and Hamsterdan's @PyLiteral@ (what
--- @ast.literal_eval@ returns, non-@str@ keys and sets included).
+-- narrower models stay apart on purpose: petrus-engine-file's @Value@
+-- (jiter's duplicate keys and NaN identity) and Hamsterdan's @PyLiteral@
+-- (what @ast.literal_eval@ returns, non-@str@ keys and sets included). All
+-- of them, and 'Json''s own '==', compare numbers with one core,
+-- 'pyNumberEq' (defined in "Petrus.Json.Value", re-exported here).
 module Petrus.Json.Python.Object
   ( PyObject (..)
   , fromJson
@@ -38,7 +39,7 @@ import Petrus.Json.Python.JsonRepr (jsonRepr)
 import Petrus.Json.Python.Scanner (Raw (..))
 import Petrus.Json.PythonText (pythonStrRepr)
 import Petrus.Json.Repr (pythonBytesRepr, pythonDoubleRepr, pythonIntRepr, pythonListRepr, pythonTupleRepr)
-import Petrus.Json.Value (Json (..))
+import Petrus.Json.Value (Json (..), PyNumber (..), pyNumberEq)
 import Petrus.Json.Wtf8 (fromCodePoints)
 
 -- | A Python object: what @json.loads@ builds, plus @bytes@, the tuples a
@@ -183,10 +184,6 @@ pyEq left right = case (pyNumber left, pyNumber right) of
   where
     pairwise as bs = length as == length bs && and (zipWith pyEq as bs)
 
--- | A number as @==@ compares it: an @int@ (or @bool@) exactly, a @float@
--- by its value.
-data PyNumber = PyExact Integer | PyInexact Double
-
 -- | The number an object is (a @bool@, @int@ or @float@).
 pyNumber :: PyObject -> Maybe PyNumber
 pyNumber = \case
@@ -194,21 +191,6 @@ pyNumber = \case
   PyInt i -> Just (PyExact i)
   PyFloat d -> Just (PyInexact d)
   _ -> Nothing
-
--- | CPython's numeric @==@: an @int@ and a @float@ compare exactly (no
--- rounding of either side), NaN equals nothing and an infinity equals no
--- @int@. The one numeric core of every Python value model of the port
--- (this one, the @ast.literal_eval@ values of
--- @Hamsterdan.PyLiteral@ and the engine-file loader's values).
-pyNumberEq :: PyNumber -> PyNumber -> Bool
-pyNumberEq (PyExact a) (PyExact b) = a == b
-pyNumberEq (PyInexact a) (PyInexact b) = a == b
-pyNumberEq (PyExact a) (PyInexact b) = exactFloatEq a b
-pyNumberEq (PyInexact a) (PyExact b) = exactFloatEq b a
-
-exactFloatEq :: Integer -> Double -> Bool
-exactFloatEq integral floating =
-  not (isNaN floating || isInfinite floating) && toRational floating == fromInteger integral
 
 -- | @repr(value)@ of the Python object @json.loads@ builds for a value.
 pythonRepr :: Json -> Text

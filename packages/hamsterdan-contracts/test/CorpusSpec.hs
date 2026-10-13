@@ -130,14 +130,14 @@ projectionSpec = describe "projection.jsonl (project_readiness and friends)" $ d
 
 decodeTagged :: Json -> PyValue
 decodeTagged = \case
-  Null -> PyNone
-  Bool value -> PyBool value
-  Int value -> PyInt value
-  String value -> PyStr value
-  Object [("float", Int bits)] -> PyFloat (castWord64ToDouble (fromInteger bits))
-  Object [("list", Array items)] -> PyList (map decodeTagged items)
-  Object [("tuple", Array items)] -> PyTuple (map decodeTagged items)
-  Object [("dict", Array pairs)] -> PyDict [(decodeTagged k, decodeTagged x) | Array [k, x] <- pairs]
+  Null -> LitNone
+  Bool value -> LitBool value
+  Int value -> LitInt value
+  String value -> LitStr value
+  Object [("float", Int bits)] -> LitFloat (castWord64ToDouble (fromInteger bits))
+  Object [("list", Array items)] -> LitList (map decodeTagged items)
+  Object [("tuple", Array items)] -> LitTuple (map decodeTagged items)
+  Object [("dict", Array pairs)] -> LitDict [(decodeTagged k, decodeTagged x) | Array [k, x] <- pairs]
   other -> error ("corpus: bad tagged value " <> show other)
 
 reprSpec :: Spec

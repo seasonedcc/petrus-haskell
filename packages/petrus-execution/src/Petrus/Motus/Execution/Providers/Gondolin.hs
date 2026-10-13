@@ -91,7 +91,7 @@ import Data.Void (Void, absurd)
 import GHC.Clock (getMonotonicTime)
 import Network.Socket (Family (AF_UNIX), SockAddr (SockAddrUnix), Socket, SocketType (Stream), close, connect, defaultProtocol, socket, withFdSocket)
 import Network.Socket.ByteString (recv, sendAll)
-import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, pythonFloatRepr)
+import Petrus.Json (EncodeOptions (..), Json (..), defaultDumps, dumps, lookupMember, pythonFloatRepr, pythonTruthy)
 import Petrus.Motus.Execution
 import Petrus.Motus.Execution.Archive (extractWorkspaceArchive, maxWorkspaceArchiveBytes, workspaceArchive)
 import Petrus.Motus.Execution.Internal.Common (checkedGuestCwd, newUuid4, replaceFile, requireSupportedCapabilities, specFingerprint, uuidHex)
@@ -295,16 +295,6 @@ removeIfExists path = removeFile path `catch` \(e :: IOException) -> unless (isD
 sleepSeconds :: Double -> IO ()
 sleepSeconds seconds = threadDelay (round (seconds * 1000000))
 
-truthy :: Json -> Bool
-truthy = \case
-  Null -> False
-  Bool b -> b
-  Int n -> n /= 0
-  Float d -> d /= 0
-  String t -> not (T.null t)
-  Array items -> not (null items)
-  Object members -> not (null members)
-
 -- ---------------------------------------------------------------------------
 -- Operation directories, lock and registry
 
@@ -448,7 +438,7 @@ registryFromJson value = case value of
       <*> text "sdk_version"
       <*> text "image"
       <*> pure groups
-      <*> pure (maybe False truthy (lookupMember "private_file_transfer" value))
+      <*> pure (maybe False pythonTruthy (lookupMember "private_file_transfer" value))
   _ -> Left (typeError "Gondolin registry must be a JSON object")
   where
     member key = maybe (Left (ExecutionError KeyError (pythonStrRepr key))) Right (lookupMember key value)
@@ -560,7 +550,7 @@ decodeResponse line = case loadsBytes line of
 -- exception's text is @str()@ of the error value, whatever its type.
 requireOk :: Text -> Json -> IO Json
 requireOk fallback response
-  | maybe False truthy (lookupMember "ok" response) = pure response
+  | maybe False pythonTruthy (lookupMember "ok" response) = pure response
   | otherwise = throwExecution RuntimeError (maybe fallback pythonStr (lookupMember "error" response))
 
 -- | @_request@: one authenticated control request (compact JSON).
@@ -587,7 +577,7 @@ handshake env record = do
       leaseOk = case lookupMember "lease_id" response of
         Just (String l) -> l == registryLeaseId record
         _ -> False
-      closing = maybe False truthy (lookupMember "closing" response)
+      closing = maybe False pythonTruthy (lookupMember "closing" response)
   unless (versionOk && leaseOk && not closing) $
     throwExecution RuntimeError "Gondolin sidecar identity or SDK version mismatch"
 
@@ -1216,8 +1206,8 @@ execute env attachment command = pythonic $ do
           code <- required "returncode" response >>= \case
             Int n -> pure (fromInteger n)
             _ -> throwExecution TypeError "Gondolin returncode must be an integer"
-          timedOut <- truthy <$> required "timed_out" response
-          truncated <- truthy <$> required "output_truncated" response
+          timedOut <- pythonTruthy <$> required "timed_out" response
+          truncated <- pythonTruthy <$> required "output_truncated" response
           either throwIO pure (mkCommandResult code stdout' stderr' timedOut False truncated provenance)
   where
     required key response =

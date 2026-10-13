@@ -2,8 +2,8 @@
 -- behavior: BSD @flock@ locks ("Petrus.Posix.Flock"), openat-family calls,
 -- @linkat@ and @shutil.rmtree@ ("Petrus.Posix.At"),
 -- @Path.resolve@/@expanduser@, @os.path.normpath@, @PurePosixPath@ parts
--- and @os.confstr@ ("Petrus.Posix.Path"), fsync and atomic replace
--- ("Petrus.Posix.File"), @getrusage@/@sysconf@ ("Petrus.Posix.Resource"),
+-- and @os.confstr@ ("Petrus.Posix.Path"), fsync, whole-buffer writes and
+-- atomic replace ("Petrus.Posix.File"), @getrusage@/@sysconf@ ("Petrus.Posix.Resource"),
 -- descriptor readiness ("Petrus.Posix.Poll"), @getaddrinfo@ error codes
 -- ("Petrus.Posix.Netdb") and a child's @returncode@
 -- ("Petrus.Posix.Process").

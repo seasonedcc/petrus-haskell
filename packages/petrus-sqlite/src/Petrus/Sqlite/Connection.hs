@@ -53,6 +53,7 @@ module Petrus.Sqlite.Connection
     -- * Statements
   , Param (..)
   , bindLength
+  , checkBindLength
   , execute
   , executeParams
   , execute_
@@ -459,11 +460,11 @@ bindAll statement params = do
     bindParam index = \case
       Datum (SQLText text) -> bindTextParam statement index text
       Datum datum@(SQLBlob bytes) -> do
-        _ <- either throwIO pure (bindLength "BLOB" (BS.length bytes))
+        _ <- checkBindLength "BLOB" (BS.length bytes)
         S.bindSQLData statement (fromIntegral index) datum
       Datum datum -> S.bindSQLData statement (fromIntegral index) datum
       Utf8Text bytes -> do
-        _ <- either throwIO pure (bindLength "string" (BS.length bytes))
+        _ <- checkBindLength "string" (BS.length bytes)
         Direct.bindText statement (Direct.ParamIndex index) (Direct.Utf8 bytes)
           >>= either (textBindFailure statement) pure
 
@@ -477,6 +478,10 @@ bindLength kind size
   | toInteger size > toInteger (maxBound :: CInt) = Left (pythonError "OverflowError" (kind <> " longer than INT_MAX bytes"))
   | otherwise = Right (fromIntegral size)
 
+-- | 'bindLength' in 'IO': the length, or its @OverflowError@ raised.
+checkBindLength :: Text -> Int -> IO CInt
+checkBindLength kind = either throwIO pure . bindLength kind
+
 foreign import ccall unsafe "petrus_sqlite_bind_text"
   c_petrus_sqlite_bind_text :: Ptr CStatement -> CInt -> ByteArray# -> CPtrdiff -> CInt -> IO CInt
 
@@ -488,10 +493,10 @@ foreign import ccall unsafe "petrus_sqlite_bind_text"
 -- the reference: 312 µs against 332 µs with 'S.bind' (medians of ten
 -- interleaved repetitions), then 328 against 333 µs beside CPython's 341 µs
 -- (six; Apple M4, 2026-10-12; bench/RESULTS.md). A text past @INT_MAX@
--- bytes raises CPython's @OverflowError@ first ('bindLength').
+-- bytes raises CPython's @OverflowError@ first ('checkBindLength').
 bindTextParam :: Statement -> Int -> Text -> IO ()
 bindTextParam statement@(Direct.Statement handle) index (TI.Text (TA.ByteArray array) offset size) = do
-  length' <- either throwIO pure (bindLength "string" size)
+  length' <- checkBindLength "string" size
   c_petrus_sqlite_bind_text handle (fromIntegral index) array (fromIntegral offset) length' >>= \case
     0 -> pure ()
     code -> textBindFailure statement (decodeError (CError code))

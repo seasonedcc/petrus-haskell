@@ -7,8 +7,9 @@ description:
   @fcntl.flock@; openat-family file operations, @linkat@ and
   @shutil.rmtree@'s descriptor walk; ports of CPython's @Path.resolve@,
   @Path.expanduser@, @os.path.realpath@, @os.path.normpath@,
-  @PurePosixPath@'s parts and parent, and @os.confstr@; fsync and the
-  upstream atomic-replace pattern; descriptor readiness (@poll@);
+  @PurePosixPath@'s parts and parent, and @os.confstr@; fsync, whole-buffer
+  writes (one without a capability hand-off, for files and character
+  devices) and the upstream atomic-replace pattern; descriptor readiness (@poll@);
   @getaddrinfo@ error codes; a child's @returncode@; and
   @getrusage@/@sysconf@ figures as upstream telemetry reports them.
 license:            Apache-2.0

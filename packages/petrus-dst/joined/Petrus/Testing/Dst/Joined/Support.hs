@@ -16,9 +16,10 @@
 --   ('commit', 'rollback').
 -- * Probes: the durable PostgreSQL facts every observation reads through a
 --   fresh autocommit connection.
--- * Python value semantics for the checkers ('pyEq' and friends): the
---   reference compares decoded JSON with Python's @==@, where dict member
---   order is irrelevant and @True == 1@.
+-- * Python value semantics for the checkers ('pyIn', 'pyCount' and
+--   friends): the reference compares decoded JSON with Python's @==@
+--   (petrus-json's 'pythonEq'), where dict member order is irrelevant,
+--   @True == 1@ and a NaN equals nothing.
 module Petrus.Testing.Dst.Joined.Support
   ( -- * Faults
     Arm (..)
@@ -34,7 +35,6 @@ module Petrus.Testing.Dst.Joined.Support
   , probeTasks
   , probeFrontier
     -- * Python value semantics
-  , pyEq
   , pyIn
   , pyCount
   , pyNum
@@ -65,7 +65,7 @@ import Petrus.Engine.Absurd (AbsurdSession (..))
 import Petrus.HistoryStore.Postgres (loadPostgresHistory)
 import Petrus.Impetus.History.Records (Record, recordName)
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
-import Petrus.Json (Json (..))
+import Petrus.Json (Json (..), pythonEq)
 import Petrus.Json.Python.Exception (raised)
 import Petrus.Motus.Dispatch.Absurd (Session (..))
 import Petrus.Postgres (Connection, quoteIdentifier, sql, sqlSource, textParam)
@@ -379,26 +379,13 @@ probeTasks probe queue = do
 -- ---------------------------------------------------------------------------
 -- Python value semantics
 
--- | Python @==@ over decoded JSON: dict member order is irrelevant, and
--- @bool@ is an @int@ (@True == 1@, @3 == 3.0@).
-pyEq :: Json -> Json -> Bool
-pyEq a b = case (a, b) of
-  (Null, Null) -> True
-  (String x, String y) -> x == y
-  (Array xs, Array ys) -> length xs == length ys && and (zipWith pyEq xs ys)
-  (Object xs, Object ys) ->
-    length xs == length ys && all (\(k, v) -> maybe False (pyEq v) (lookup k ys)) xs
-  _ -> case (pyNum a, pyNum b) of
-    (Just x, Just y) -> x == y
-    _ -> False
-
 -- | @x in candidates@.
 pyIn :: Json -> [Json] -> Bool
-pyIn x = any (pyEq x)
+pyIn x = any (pythonEq x)
 
 -- | @values.count(x)@.
 pyCount :: Json -> [Json] -> Integer
-pyCount x = toInteger . length . filter (pyEq x)
+pyCount x = toInteger . length . filter (pythonEq x)
 
 -- | A Python number (@bool@ counts as @int@).
 pyNum :: Json -> Maybe Rational
@@ -447,4 +434,4 @@ isPyObject = \case
 
 -- | @payload in (None, {})@.
 payloadAbsent :: Json -> Bool
-payloadAbsent payload = payload == Null || pyEq payload (Object [])
+payloadAbsent payload = payload == Null || pythonEq payload (Object [])

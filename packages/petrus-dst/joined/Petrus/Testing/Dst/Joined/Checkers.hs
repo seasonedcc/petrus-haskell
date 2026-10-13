@@ -47,11 +47,11 @@ module Petrus.Testing.Dst.Joined.Checkers
 
 import Data.Text (Text)
 import Data.Text qualified as T
-import Petrus.Json (Json (..))
+import Petrus.Json (Json (..), pythonEq, pythonTruthy)
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Engine.Common (member)
 import Petrus.Testing.Dst.Joined.Identities qualified as Id
-import Petrus.Testing.Dst.Joined.Support (listOf, pyCount, pyEq, pyIn, pyNum, strs)
+import Petrus.Testing.Dst.Joined.Support (listOf, pyCount, pyIn, pyNum, strs)
 
 -- ---------------------------------------------------------------------------
 -- Python value helpers
@@ -90,17 +90,6 @@ plus a b = (+) <$> a <*> b
 int :: Integer -> Json
 int = Int
 
--- | Python truthiness of a JSON value.
-truthy :: Json -> Bool
-truthy = \case
-  Null -> False
-  Bool b -> b
-  Int i -> i /= 0
-  Float d -> d /= 0
-  String s -> not (T.null s)
-  Array xs -> not (null xs)
-  Object ms -> not (null ms)
-
 isTrue, isFalse :: Json -> Bool
 isTrue = (== Bool True)
 isFalse = (== Bool False)
@@ -116,7 +105,7 @@ list key value = listOf (member key value)
 
 -- | @xs == ys@ over lists.
 eqList :: [Json] -> [Json] -> Bool
-eqList xs ys = pyEq (Array xs) (Array ys)
+eqList xs ys = pythonEq (Array xs) (Array ys)
 
 -- | @xs in (candidates...)@ over lists.
 oneOf :: [Json] -> [[Json]] -> Bool
@@ -191,7 +180,7 @@ commitAuthorityChecker = checker Id.checkerIdentity "engine.joined-commit-author
       selected = count "CandidateSelected" records
       begun = count "FiringBegun" records
       requested = count "ActivityRequested" records
-      whole = all (\a -> isTrue (member "dispatch_attempted" a) && pyEq (member "record_types" a) (strs beginBatch)) attempts
+      whole = all (\a -> isTrue (member "dispatch_attempted" a) && pythonEq (member "record_types" a) (strs beginBatch)) attempts
       tasksExact = oneOf tasks (taskStates ["pending"])
       passed =
         0 <= refused
@@ -228,7 +217,7 @@ deliveryAuthorityChecker = checker Id.deliveryCheckerIdentity "engine.joined-del
         all
           (\a -> isFalse (member "dispatch_attempted" a) && pyIn (member "record_types" a) [acceptanceBatch, completionBatch])
           transactions
-      tally accepted batch = len [() | a <- transactions, member "accepted" a == Bool accepted, pyEq (member "record_types" a) batch]
+      tally accepted batch = len [() | a <- transactions, member "accepted" a == Bool accepted, pythonEq (member "record_types" a) batch]
       acceptedAcceptances = tally True acceptanceBatch
       acceptedCompletions = tally True completionBatch
       refusedAcceptances = tally False acceptanceBatch
@@ -241,11 +230,11 @@ deliveryAuthorityChecker = checker Id.deliveryCheckerIdentity "engine.joined-del
       d = String . actionDispositionText
       attemptsN = length deliveryAttempts
       (expectedTransactions, expectedReported)
-        | truthy refusalFaults =
+        | pythonTruthy refusalFaults =
             ( [refusedAcceptance] <> (if attemptsN >= 2 then [acceptedAcceptance, acceptedCompletion] else [])
             , [d RefusedExpected] <> (if attemptsN >= 2 then [d Applied] <> [d Idempotent | attemptsN == 3] else [])
             )
-        | truthy ackLosses =
+        | pythonTruthy ackLosses =
             ( [acceptedAcceptance] <> [acceptedCompletion | attemptsN >= 2]
             , [d RefusedExpected] <> (if attemptsN >= 2 then [d Applied] <> [d Idempotent | attemptsN == 3] else [])
             )
@@ -296,7 +285,7 @@ checkScoped quarantine acknowledgementLoss value =
       expectedTransaction = Object [("dispatch_attempted", Bool False), ("record_types", strs [recordName])]
       transactionsExact =
         all
-          (\a -> pyEq (Object [(k, member k a) | k <- ["dispatch_attempted", "record_types"]]) expectedTransaction)
+          (\a -> pythonEq (Object [(k, member k a) | k <- ["dispatch_attempted", "record_types"]]) expectedTransaction)
           transactions
       accepted = len (filter (isTrue . member "accepted") transactions)
       refused = len (filter (isFalse . member "accepted") transactions)
@@ -341,7 +330,7 @@ checkScoped quarantine acknowledgementLoss value =
       payloadsExact =
         all
           ( \a ->
-              pyEq
+              pythonEq
                 (Object [(k, member k a) | k <- ["identity", "scope_generation", "value"]])
                 (Object [("identity", String identity), ("scope_generation", Int generation), ("value", Int 3)])
           )
@@ -986,7 +975,7 @@ openAuthorityChecker = checker Id.openCheckerIdentity "engine.joined-open-author
       expectedActive = Object [("draft", Int 1) | accepted /= 0]
       ackLosses = num "open_ack_losses" value
       liveCoherent =
-        pyEq active expectedActive
+        pythonEq active expectedActive
           || (active == Null && num "drops" value .== n (0 :: Integer) && num "scope_opens" value .== n (1 :: Integer))
       passed =
         attemptsExact
@@ -1023,7 +1012,7 @@ checkCancellation acknowledgementLoss value =
           [[], [sourceAcceptance], [sourceAcceptance, sourceCompletion], [sourceAcceptance, sourceCompletion, begin]]
       acceptedBegins = countJ begin attempts
       scopeResets = num "scope_resets" value
-      resetsTruthy = truthy (member "scope_resets" value)
+      resetsTruthy = pythonTruthy (member "scope_resets" value)
       refusedCancellation = lifecycle False "cancellation" []
       acceptedCancellations = countJ acceptedCancellationLifecycle lifecycleAttempts
       acceptedResetLifecycle = lifecycle True "scope_reset" ["ScopeReset"]
@@ -1135,7 +1124,7 @@ registrationProjectionAuthorityChecker =
         engineArmed = member "engine_armed" value
         engineCoherent =
           (status == String "poisoned" && engineArmed == Null)
-            || (status /= String "poisoned" && pyEq engineArmed expectedArmed)
+            || (status /= String "poisoned" && pythonEq engineArmed expectedArmed)
         tasks = list "durable_tasks" value
         workerCompletions = num "worker_completions" value
         tasksExact = null tasks || oneOf tasks (taskStates ["pending", "running", "completed"])
@@ -1154,7 +1143,7 @@ registrationProjectionAuthorityChecker =
             && n refusedProjection .== refusals
             && refusals .<= n (1 :: Integer)
             && les [n (0 :: Integer), ackLosses, n acceptedProjection, n (1 :: Integer)]
-            && not (refusedProjection /= 0 && truthy (member "projection_ack_losses" value))
+            && not (refusedProjection /= 0 && pythonTruthy (member "projection_ack_losses" value))
             && completedCustody == (workerCompletions .== n (1 :: Integer))
             && tasksExact
             && engineCoherent
@@ -1214,7 +1203,7 @@ sealAuthorityChecker = checker Id.sealCheckerIdentity "engine.joined-seal-author
         | otherwise = "running"
       engineCoherent =
         (status == String "poisoned" && engineArmed == Null)
-          || (status == String expectedStatus && pyEq engineArmed expectedArmed)
+          || (status == String expectedStatus && pythonEq engineArmed expectedArmed)
       terminalCoherent = status `elem` [String "poisoned", String expectedStatus]
       sealAckLosses = num "seal_ack_losses" value
       sealRefusals = num "seal_refusals" value
@@ -1234,7 +1223,7 @@ sealAuthorityChecker = checker Id.sealCheckerIdentity "engine.joined-seal-author
           && n refusedSeals .== sealRefusals
           && sealRefusals .<= n (1 :: Integer)
           && les [n (0 :: Integer), sealAckLosses, n acceptedSeals, n (1 :: Integer)]
-          && not (refusedSeals /= 0 && truthy (member "seal_ack_losses" value))
+          && not (refusedSeals /= 0 && pythonTruthy (member "seal_ack_losses" value))
           && completedCustody == (workerCompletions .== n (1 :: Integer))
           && tasksExact
           && engineCoherent
@@ -1273,7 +1262,7 @@ checkCreation sourced value =
       canonicalTypes = list "record_types" value
       canonicalInstances = list "canonical_instances" value
       canonicalTokens = list "canonical_tokens" value
-      enginePresent = truthy (member "engine_present" value)
+      enginePresent = pythonTruthy (member "engine_present" value)
       drops = num "drops" value
       expectedTypes = if accepted /= 0 then map String batch else []
       instanceId = if sourced then "dst-world-joined-source-creation" else "dst-world-joined-creation"

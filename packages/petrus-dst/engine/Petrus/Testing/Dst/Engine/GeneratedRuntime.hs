@@ -83,7 +83,7 @@ import Petrus.Impetus.Instance (DeliveryScope (..), FiringOutcome (..))
 import Petrus.Impetus.Petrinet hiding (Delay)
 import Petrus.Impetus.Petrinet qualified as Petrinet
 import Petrus.Impetus.Scope (scopeGeneration)
-import Petrus.Json (Json (..), lookupMember, parseJson, surrogateRefusingLoads)
+import Petrus.Json (Json (..), lookupMember, parseJson, pythonTruthy, surrogateRefusingLoads)
 import Petrus.Motus.Dispatch (ActivityAttempt, AttemptFailure (..), Dispatch (..))
 import Petrus.Motus.Dispatch.Local (LocalDispatch, LocalDispatchClock (..), LocalWorkerDispatch)
 import Petrus.Motus.Dispatch.Local qualified as Local
@@ -1000,7 +1000,7 @@ verdict frozen value =
           && (member "live_scopes" value == Null || member "live_scopes" value == activeScopes)
           && member "authored_scope_opens" value `leq` 1
           && member "authored_scope_resets" value `leq` 1
-          && and [truthy (member "cancelled" c) | c <- completions, member "occurrence" c `elem` quarantined]
+          && and [pythonTruthy (member "cancelled" c) | c <- completions, member "occurrence" c `elem` quarantined]
 
       cancelled = nub (concat [listOf "cancelled" r | r <- listOf "scope_records" value])
       expectedInFlight =
@@ -1088,14 +1088,6 @@ verdict frozen value =
     leq v n = case v of
       Int i -> i <= n
       _ -> False
-    truthy = \case
-      Bool b -> b
-      Null -> False
-      Int i -> i /= 0
-      String s -> not (T.null s)
-      Array xs -> not (null xs)
-      Object ms -> not (null ms)
-      Float d -> d /= 0
 
 -- ---------------------------------------------------------------------------
 -- The story

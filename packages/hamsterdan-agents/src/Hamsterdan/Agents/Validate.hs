@@ -261,7 +261,7 @@ exact members names =
               <> strList (sort (map fst members))
           )
   where
-    strList = repr . PyList . map PyStr
+    strList = repr . LitList . map LitStr
 
 -- | @value in VOCABULARY@ for a closed vocabulary: the member the value
 -- spells, if any. An unhashable value raises, as 'memberOf'.

@@ -52,17 +52,20 @@ import Petrus.Json.Python.JsonRepr (jsonItemsRepr, jsonRepr)
 import Petrus.Json.Python (PyNumber (..), pyNumberEq, pythonDoubleRepr, pythonExceptionStr, pythonStrRepr, unicodeEncodeError, utf8EncodeFailure)
 import Petrus.Json.Wtf8 (fromCodePoints)
 
--- | A Python value of a modeled type. 'PyDict' keeps insertion order and
--- never holds two Python-equal keys.
+-- | A Python value of a modeled type. 'LitDict' keeps insertion order and
+-- never holds two Python-equal keys. The constructors carry a @Lit@ prefix
+-- so that a module can use them beside petrus-json's
+-- 'Petrus.Json.Python.PyObject' (whose @PyStr@, @PyList@ and others name
+-- the wider object model) without qualification.
 data PyValue
-  = PyNone
-  | PyBool Bool
-  | PyInt Integer
-  | PyFloat Double
-  | PyStr Text
-  | PyList [PyValue]
-  | PyTuple [PyValue]
-  | PyDict [(PyValue, PyValue)]
+  = LitNone
+  | LitBool Bool
+  | LitInt Integer
+  | LitFloat Double
+  | LitStr Text
+  | LitList [PyValue]
+  | LitTuple [PyValue]
+  | LitDict [(PyValue, PyValue)]
   deriving stock (Eq, Show)
 
 -- | Python's @==@: numbers compare by value across @bool@, @int@, and
@@ -74,11 +77,11 @@ pyEq left right = case (numeric left, numeric right) of
   (Just _, Nothing) -> False
   (Nothing, Just _) -> False
   (Nothing, Nothing) -> case (left, right) of
-    (PyNone, PyNone) -> True
-    (PyStr a, PyStr b) -> a == b
-    (PyList a, PyList b) -> sameLength a b && and (zipWith pyEq a b)
-    (PyTuple a, PyTuple b) -> sameLength a b && and (zipWith pyEq a b)
-    (PyDict a, PyDict b) ->
+    (LitNone, LitNone) -> True
+    (LitStr a, LitStr b) -> a == b
+    (LitList a, LitList b) -> sameLength a b && and (zipWith pyEq a b)
+    (LitTuple a, LitTuple b) -> sameLength a b && and (zipWith pyEq a b)
+    (LitDict a, LitDict b) ->
       sameLength a b
         && all (\(key, value) -> maybe False (pyEq value) (lookupKey key b)) a
     _ -> False
@@ -88,9 +91,9 @@ pyEq left right = case (numeric left, numeric right) of
 -- | The number a value is, for @==@ (petrus-json's numeric core).
 numeric :: PyValue -> Maybe PyNumber
 numeric = \case
-  PyBool value -> Just (PyExact (if value then 1 else 0))
-  PyInt value -> Just (PyExact value)
-  PyFloat value -> Just (PyInexact value)
+  LitBool value -> Just (PyExact (if value then 1 else 0))
+  LitInt value -> Just (PyExact value)
+  LitFloat value -> Just (PyInexact value)
   _ -> Nothing
 
 lookupKey :: PyValue -> [(PyValue, PyValue)] -> Maybe PyValue
@@ -101,28 +104,28 @@ lookupKey key = fmap snd . findFirst (pyEq key . fst)
 -- | A JSON value as Python's @json.loads@ returns it.
 fromJson :: Json -> PyValue
 fromJson = \case
-  Json.Null -> PyNone
-  Json.Bool value -> PyBool value
-  Json.Int value -> PyInt value
-  Json.Float value -> PyFloat value
-  Json.String value -> PyStr value
-  Json.Array values -> PyList (map fromJson values)
-  Json.Object members -> PyDict [(PyStr key, fromJson value) | (key, value) <- pythonDict members]
+  Json.Null -> LitNone
+  Json.Bool value -> LitBool value
+  Json.Int value -> LitInt value
+  Json.Float value -> LitFloat value
+  Json.String value -> LitStr value
+  Json.Array values -> LitList (map fromJson values)
+  Json.Object members -> LitDict [(LitStr key, fromJson value) | (key, value) <- pythonDict members]
 
 -- | The JSON value @json.dumps@ would write, when every dict key is a
 -- string (tuples become arrays, as in @json.dumps@).
 toJson :: PyValue -> Maybe Json
 toJson = \case
-  PyNone -> Just Json.Null
-  PyBool value -> Just (Json.Bool value)
-  PyInt value -> Just (Json.Int value)
-  PyFloat value -> Just (Json.Float value)
-  PyStr value -> Just (Json.String value)
-  PyList values -> Json.Array <$> traverse toJson values
-  PyTuple values -> Json.Array <$> traverse toJson values
-  PyDict members -> Json.Object <$> traverse member members
+  LitNone -> Just Json.Null
+  LitBool value -> Just (Json.Bool value)
+  LitInt value -> Just (Json.Int value)
+  LitFloat value -> Just (Json.Float value)
+  LitStr value -> Just (Json.String value)
+  LitList values -> Json.Array <$> traverse toJson values
+  LitTuple values -> Json.Array <$> traverse toJson values
+  LitDict members -> Json.Object <$> traverse member members
   where
-    member (PyStr key, value) = (key,) <$> toJson value
+    member (LitStr key, value) = (key,) <$> toJson value
     member _ = Nothing
 
 -- * Printing -----------------------------------------------------------------
@@ -138,16 +141,16 @@ repr value = T.concat (reprChunks value [])
 
 reprChunks :: PyValue -> Chunks
 reprChunks = \case
-  PyNone -> ("None" :)
-  PyBool True -> ("True" :)
-  PyBool False -> ("False" :)
-  PyInt value -> (intText value :)
-  PyFloat value -> (pythonDoubleRepr value :)
-  PyStr value -> strChunks value
-  PyList values -> ("[" :) . commaSeparated (map reprChunks values) . ("]" :)
-  PyTuple [single] -> ("(" :) . reprChunks single . (",)" :)
-  PyTuple values -> ("(" :) . commaSeparated (map reprChunks values) . (")" :)
-  PyDict members -> dictChunks [(reprChunks key, reprChunks value) | (key, value) <- members]
+  LitNone -> ("None" :)
+  LitBool True -> ("True" :)
+  LitBool False -> ("False" :)
+  LitInt value -> (intText value :)
+  LitFloat value -> (pythonDoubleRepr value :)
+  LitStr value -> strChunks value
+  LitList values -> ("[" :) . commaSeparated (map reprChunks values) . ("]" :)
+  LitTuple [single] -> ("(" :) . reprChunks single . (",)" :)
+  LitTuple values -> ("(" :) . commaSeparated (map reprChunks values) . (")" :)
+  LitDict members -> dictChunks [(reprChunks key, reprChunks value) | (key, value) <- members]
 
 dictChunks :: [(Chunks, Chunks)] -> Chunks
 dictChunks members = ("{" :) . commaSeparated [key . (": " :) . value | (key, value) <- members] . ("}" :)
@@ -244,12 +247,12 @@ unsupported = Left . LiteralError Unsupported
 convert :: Expr -> Either LiteralError PyValue
 convert = \case
   EConst value -> Right value
-  ETuple elements -> PyTuple <$> traverse convert elements
-  EList elements -> PyList <$> traverse convert elements
-  EDict members -> PyDict <$> insertAll ([], Set.empty) members
+  ETuple elements -> LitTuple <$> traverse convert elements
+  EList elements -> LitList <$> traverse convert elements
+  EDict members -> LitDict <$> insertAll ([], Set.empty) members
   ESigned negative operand -> case operand of
-    EConst (PyInt value) -> Right (PyInt (if negative then negate value else value))
-    EConst (PyFloat value) -> Right (PyFloat (if negative then negate value else value))
+    EConst (LitInt value) -> Right (LitInt (if negative then negate value else value))
+    EConst (LitFloat value) -> Right (LitFloat (if negative then negate value else value))
     EImaginary -> unsupported "complex is not a modeled value"
     _ -> malformed "malformed node or string"
   EBinary left right
@@ -264,10 +267,10 @@ convert = \case
   EUnsupported what -> unsupported (what <> " is not a modeled value")
   where
     realNumber = \case
-      EConst (PyInt _) -> True
-      EConst (PyFloat _) -> True
-      ESigned _ (EConst (PyInt _)) -> True
-      ESigned _ (EConst (PyFloat _)) -> True
+      EConst (LitInt _) -> True
+      EConst (LitFloat _) -> True
+      ESigned _ (EConst (LitInt _)) -> True
+      ESigned _ (EConst (LitFloat _)) -> True
       _ -> False
     -- dict(zip(map(_convert, keys), map(_convert, values))): key, value,
     -- insert (hashing the key), in source order.
@@ -281,11 +284,11 @@ convert = \case
     -- by Python equality.
     insert key value (acc, strings)
       | present = ([if pyEq key existing then (existing, value) else pair | pair@(existing, _) <- acc], strings)
-      | PyStr text <- key = ((key, value) : acc, Set.insert text strings)
+      | LitStr text <- key = ((key, value) : acc, Set.insert text strings)
       | otherwise = ((key, value) : acc, strings)
       where
         present = case key of
-          PyStr text -> Set.member text strings
+          LitStr text -> Set.member text strings
           _ -> any (pyEq key . fst) acc
 
 -- | CPython 3.14's text: @cannot use 'tuple' as a dict key (unhashable
@@ -296,19 +299,19 @@ unhashableError role value =
   LiteralError Unhashable ("cannot use '" <> typeName value <> "' as " <> role <> " (unhashable type: '" <> typeName (culprit value) <> "')")
   where
     culprit = \case
-      PyTuple elements | (bad : _) <- filter (not . hashable) elements -> culprit bad
+      LitTuple elements | (bad : _) <- filter (not . hashable) elements -> culprit bad
       other -> other
     typeName = \case
-      PyList _ -> "list"
-      PyDict _ -> "dict"
-      PyTuple _ -> "tuple"
+      LitList _ -> "list"
+      LitDict _ -> "dict"
+      LitTuple _ -> "tuple"
       _ -> "object"
 
 hashable :: PyValue -> Bool
 hashable = \case
-  PyList _ -> False
-  PyDict _ -> False
-  PyTuple elements -> all hashable elements
+  LitList _ -> False
+  LitDict _ -> False
+  LitTuple elements -> all hashable elements
   _ -> True
 
 -- ** Parser
@@ -568,9 +571,9 @@ word depth = do
     _ -> do
       setP after
       case name of
-        "True" -> pure (EConst (PyBool True))
-        "False" -> pure (EConst (PyBool False))
-        "None" -> pure (EConst PyNone)
+        "True" -> pure (EConst (LitBool True))
+        "False" -> pure (EConst (LitBool False))
+        "None" -> pure (EConst LitNone)
         _ -> do
           skipSpace depth
           next <- peekP
@@ -597,7 +600,7 @@ stringLiterals depth = do
     | not (null bytes) -> pure (EUnsupported "bytes")
     | or [True | PieceFormat <- pieces] -> pure (EName "f-string")
     | (what : _) <- [what | PieceUnsupported what <- pieces] -> pure (EUnsupported what)
-    | otherwise -> pure (EConst (PyStr (T.concat [text | PieceText text <- pieces])))
+    | otherwise -> pure (EConst (LitStr (T.concat [text | PieceText text <- pieces])))
   where
     more = do
       skipSpace depth
@@ -733,7 +736,7 @@ number = do
       when (T.null digits) $ syntax "invalid literal"
       endOfNumber after
       setP after
-      pure (EConst (PyInt (T.foldl' (\acc d -> acc * radixValue + toInteger (hexValue d)) 0 digits)))
+      pure (EConst (LitInt (T.foldl' (\acc d -> acc * radixValue + toInteger (hexValue d)) 0 digits)))
     hexValue d
       | isDigit d = ord d - ord '0'
       | otherwise = ord (toLower d) - ord 'a' + 10
@@ -768,14 +771,14 @@ number = do
           real hasPoint hasExponent wholeDigits fraction power
     real hasPoint hasExponent wholeDigits fraction power =
       if hasPoint || hasExponent
-        then pure (EConst (PyFloat (decimalToDouble wholeDigits fraction power)))
+        then pure (EConst (LitFloat (decimalToDouble wholeDigits fraction power)))
         else do
           when (T.length wholeDigits > 1 && T.head wholeDigits == '0' && T.any (/= '0') wholeDigits) $
             syntax "leading zeros in decimal integer literals are not permitted"
           -- CPython counts the digits of the value, not leading zeros.
           when (T.length (T.dropWhile (== '0') wholeDigits) > maxIntStrDigits) $
             syntax "Exceeds the limit (4300 digits) for integer string conversion"
-          pure (EConst (PyInt (read (T.unpack wholeDigits))))
+          pure (EConst (LitInt (read (T.unpack wholeDigits))))
     endOfNumber after = case T.uncons after of
       Just (c, _) | isAlphaNum c || c == '_' -> syntax "invalid decimal literal"
       _ -> pure ()

@@ -31,19 +31,12 @@ module Hamsterdan.Python.Value
 import Data.Text (Text)
 import Data.Text qualified as T
 import Hamsterdan.Python.Text (intText)
-import Petrus.Json (Json (..))
+import Petrus.Json (Json (..), pythonTruthy)
 import Petrus.Json.Python (PyObject (..), PythonException (..), jsonTypeName, pythonError, pythonRepr, pythonStr)
 
 -- | Python truthiness (@bool(value)@).
 truthy :: Json -> Bool
-truthy = \case
-  Null -> False
-  Bool b -> b
-  Int i -> i /= 0
-  Float d -> d /= 0
-  String s -> not (T.null s)
-  Array items -> not (null items)
-  Object members -> not (null members)
+truthy = pythonTruthy
 
 -- | @value or {}@.
 orEmpty :: Json -> Json

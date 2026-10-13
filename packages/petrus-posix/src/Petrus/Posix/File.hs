@@ -24,6 +24,11 @@ module Petrus.Posix.File
   , writeAll
   , writeAllBuffer
 
+    -- * Writing without a hand-off (files and character devices)
+  , DirectFd
+  , directFd
+  , writeDirect
+
     -- * Atomic replace
   , AtomicWrite (..)
   , defaultAtomicWrite
@@ -45,8 +50,8 @@ import Data.Bits (clearBit, setBit)
 import Data.ByteString (ByteString)
 import Data.ByteString.Unsafe (unsafeUseAsCStringLen)
 import Data.Word (Word8)
-import Foreign.C.Types (CInt (..))
-import Foreign.C.Error (throwErrnoIfMinus1Retry_)
+import Foreign.C.Types (CInt (..), CSize (..))
+import Foreign.C.Error (throwErrnoIfMinus1Retry, throwErrnoIfMinus1Retry_)
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import Numeric (showHex)
 import Petrus.Posix.At (Follow (..), isDirectory, statAt)
@@ -54,8 +59,9 @@ import System.FilePath (takeDirectory, takeFileName, (</>))
 import System.IO.Error (catchIOError, isAlreadyExistsError, isDoesNotExistError)
 import System.Posix.Directory (createDirectory)
 import System.Posix.IO (OpenFileFlags (..), OpenMode (..), closeFd, defaultFileFlags, fdWriteBuf, openFd)
-import System.Posix.Types (Fd (..), FileMode)
+import System.Posix.Types (CSsize (..), Fd (..), FileMode)
 import System.Posix.Files qualified
+import System.Posix.Files (getFdStatus, isCharacterDevice, isRegularFile)
 import System.Random (randomRIO)
 import System.Random.Stateful (globalStdGen, uniformListM)
 
@@ -82,6 +88,49 @@ writeAllBuffer :: Fd -> Ptr Word8 -> Int -> IO ()
 writeAllBuffer fd pointer remaining = when (remaining > 0) $ do
   written <- fromIntegral <$> fdWriteBuf fd pointer (fromIntegral remaining)
   writeAllBuffer fd (pointer `plusPtr` written) (remaining - written)
+
+-- | A descriptor open on a regular file or a character device (a terminal,
+-- @/dev/null@): one whose @write(2)@ completes without waiting for a
+-- reader. Only 'directFd' makes one.
+newtype DirectFd = DirectFd Fd
+
+-- | The descriptor as a 'DirectFd', if @fstat@ says it is a regular file or
+-- a character device; 'Nothing' for a pipe, a socket or anything else (and
+-- when @fstat@ fails).
+directFd :: Fd -> IO (Maybe DirectFd)
+directFd fd = do
+  status <- try @IOError (getFdStatus fd)
+  pure $ case status of
+    Right st | isRegularFile st || isCharacterDevice st -> Just (DirectFd fd)
+    _ -> Nothing
+
+-- | 'writeAll' through an @unsafe@ foreign call: the write runs on the
+-- calling capability, where 'writeAll''s safe call releases the capability
+-- and, when other threads are runnable, hands it to another OS thread and
+-- back on every call. Short writes loop, @EINTR@ is retried, and a failure
+-- raises the errno's 'IOError', as 'writeAll' does.
+--
+-- While the call runs, no other Haskell thread of the capability runs, as
+-- Node's event loop waits for its synchronous @console.log@ to a file or a
+-- terminal. That is why only a 'DirectFd' takes it: a regular file or a
+-- character device does not wait for a reader (a terminal can still apply
+-- flow control, which stalls Node's loop the same way), while a pipe or a
+-- socket could block the capability indefinitely.
+--
+-- Measured where it is used, the viewer's @petrus-mcp@ logging every
+-- bridge request to @/dev/null@ with 16 calls in flight: 'writeAll' served
+-- 0.74x the calls this does, and fell behind Node's (bench/RESULTS.md,
+-- "@writeDirect@"; petrus-viewer-server's bench/RESULTS.md, "Low-level code,
+-- measured").
+writeDirect :: DirectFd -> ByteString -> IO ()
+writeDirect (DirectFd (Fd fd)) bytes = unsafeUseAsCStringLen bytes $ \(pointer, size) -> go (castPtr pointer) size
+  where
+    go :: Ptr Word8 -> Int -> IO ()
+    go pointer remaining = when (remaining > 0) $ do
+      written <- throwErrnoIfMinus1Retry "writeDirect" (c_write_unsafe fd pointer (fromIntegral remaining))
+      go (pointer `plusPtr` fromIntegral written) (remaining - fromIntegral written)
+
+foreign import capi unsafe "unistd.h write" c_write_unsafe :: CInt -> Ptr Word8 -> CSize -> IO CSsize
 
 -- | How the temporary file is named, given the destination's file name.
 newtype TempNaming = TempNaming (FilePath -> IO FilePath)

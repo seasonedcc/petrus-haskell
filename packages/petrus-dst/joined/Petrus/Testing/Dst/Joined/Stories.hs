@@ -47,11 +47,11 @@ import Control.Monad.IO.Class (liftIO)
 import Data.ByteString (ByteString)
 import Data.IORef (readIORef)
 import Data.Text (Text)
-import Petrus.Json (Json (..))
+import Petrus.Json (Json (..), pythonEq)
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Engine.Common (atKey, ensure, memberOf)
 import Petrus.Testing.Dst.Joined.Checkers qualified as C
-import Petrus.Testing.Dst.Joined.Support (listOf, pyEq, strs)
+import Petrus.Testing.Dst.Joined.Support (listOf, strs)
 import Petrus.Testing.Dst.Joined.World
 import Petrus.Testing.Dst.Timeline qualified as Timeline
 import Petrus.Testing.Dst.World qualified as World
@@ -63,7 +63,7 @@ type Story = WorldT IO JoinedGeneration
 
 -- | @assert observation.value[key] == expected@ (Python equality).
 is :: Observation -> Text -> Json -> Story ()
-is o key expected = ensure (pyEq (memberOf key o) expected) ("observation " <> o.name <> " " <> key)
+is o key expected = ensure (pythonEq (memberOf key o) expected) ("observation " <> o.name <> " " <> key)
 
 -- | Several @is@ assertions.
 are :: Observation -> [(Text, Json)] -> Story ()
@@ -73,7 +73,7 @@ are o = mapM_ (uncurry (is o))
 endsWith :: Observation -> Text -> [Json] -> Story ()
 endsWith o key expected =
   let xs = listOf (memberOf key o)
-   in ensure (pyEq (Array (drop (length xs - length expected) xs)) (Array expected)) ("observation " <> o.name <> " tail of " <> key)
+   in ensure (pythonEq (Array (drop (length xs - length expected) xs)) (Array expected)) ("observation " <> o.name <> " tail of " <> key)
 
 -- | @assert name not in observation.value[key]@.
 excludes :: Observation -> Text -> Text -> Story ()
@@ -223,7 +223,7 @@ buildAckLossArtifact =
       , ("status", String "poisoned")
       ]
     timeline' <- crashAndRestart timeline "joined_begin_committed_ack_lost"
-    recovered <- Timeline.runUntil timeline' "joined-begin-ack-recovered" (\o -> pyEq (memberOf "drive_calls" o) (int 2))
+    recovered <- Timeline.runUntil timeline' "joined-begin-ack-recovered" (\o -> pythonEq (memberOf "drive_calls" o) (int 2))
     is recovered "frontier" (int 6)
     same recovered lost "record_types"
     same recovered lost "durable_tasks"
@@ -293,7 +293,7 @@ buildDeliveryRefusalArtifact =
     same redelivered recovered "frontier"
     same redelivered recovered "canonical_deliveries"
     ensure
-      (pyEq (attemptDispositions (memberOf "delivery_attempts" redelivered)) (dispositions [RefusedExpected, Applied, Idempotent]))
+      (pythonEq (attemptDispositions (memberOf "delivery_attempts" redelivered)) (dispositions [RefusedExpected, Applied, Idempotent]))
       "redelivered dispositions"
     Timeline.finish timeline' ExternalWait
 
@@ -332,11 +332,11 @@ buildDeliveryAckLossArtifact =
     acknowledged <- Timeline.command timeline' "source.deliver" deliveryPayload
     disposed acknowledged Idempotent
     ensure
-      (pyEq (attemptDispositions (memberOf "delivery_attempts" recovered)) (dispositions [RefusedExpected, Applied]))
+      (pythonEq (attemptDispositions (memberOf "delivery_attempts" recovered)) (dispositions [RefusedExpected, Applied]))
       "recovered dispositions"
     attempts <- liftIO (readIORef p.deliveryAttempts)
     ensure
-      (pyEq (attemptDispositions (Array attempts)) (dispositions [RefusedExpected, Applied, Idempotent]))
+      (pythonEq (attemptDispositions (Array attempts)) (dispositions [RefusedExpected, Applied, Idempotent]))
       "profile delivery attempts"
     Timeline.finish timeline' ExternalWait
 
@@ -567,7 +567,7 @@ buildProjectionAckLossArtifact =
       , ("worker_completions", int 1)
       ]
     timeline' <- crashAndRestart timeline "joined_projection_committed_ack_lost"
-    recovered <- Timeline.runUntil timeline' "joined-projection-ack-recovered" (\o -> pyEq (memberOf "drive_calls" o) (int 3))
+    recovered <- Timeline.runUntil timeline' "joined-projection-ack-recovered" (\o -> pythonEq (memberOf "drive_calls" o) (int 3))
     same recovered lost "record_types"
     same recovered lost "durable_tasks"
     are
@@ -626,7 +626,7 @@ buildFailureProjectionAckLossArtifact =
       are lost [("projection_ack_losses", int 1), ("worker_failures", int 1)]
       timeline' <- crashAndRestart timeline "joined_failure_projection_committed_ack_lost"
       recovered <-
-        Timeline.runUntil timeline' "joined-failure-projection-ack-recovered" (\o -> pyEq (memberOf "drive_calls" o) (int 3))
+        Timeline.runUntil timeline' "joined-failure-projection-ack-recovered" (\o -> pythonEq (memberOf "drive_calls" o) (int 3))
       is recovered "frontier" (int 8)
       same recovered lost "record_types"
       same recovered lost "transaction_attempts"
@@ -641,7 +641,7 @@ claimDraftActivity :: Timeline -> Text -> Bool -> Story Observation
 claimDraftActivity timeline readyName observeClaim = do
   void (Timeline.command timeline "scope.open" draft)
   void (Timeline.command timeline "source.deliver" (Object [("identity", String "draft-input-3"), ("scope", String "draft"), ("value", int 3)]))
-  ready <- Timeline.runUntil timeline readyName (\o -> pyEq (memberOf "durable_tasks" o) (task 2 "pending"))
+  ready <- Timeline.runUntil timeline readyName (\o -> pythonEq (memberOf "durable_tasks" o) (task 2 "pending"))
   is ready "frontier" (int 11)
   if observeClaim
     then do
@@ -698,7 +698,7 @@ buildResetRefusalArtifact =
       , ("status", String "poisoned")
       ]
     timeline' <- crashAndRestart timeline "joined_scope_reset_commit_refused"
-    recovered <- Timeline.runUntil timeline' "joined-reset-recovered" (\o -> pyEq (memberOf "drive_calls" o) (int 2))
+    recovered <- Timeline.runUntil timeline' "joined-reset-recovered" (\o -> pythonEq (memberOf "drive_calls" o) (int 2))
     is recovered "frontier" (int 11)
     same recovered refused "record_types"
     same recovered claimed "durable_tasks"
@@ -747,7 +747,7 @@ buildResetAckLossArtifact =
       , ("status", String "poisoned")
       ]
     timeline' <- crashAndRestart timeline "joined_scope_reset_committed_ack_lost"
-    recovered <- Timeline.runUntil timeline' "joined-reset-ack-recovered" (\o -> pyEq (memberOf "durable_tasks" o) (task 2 "cancelled"))
+    recovered <- Timeline.runUntil timeline' "joined-reset-ack-recovered" (\o -> pythonEq (memberOf "durable_tasks" o) (task 2 "cancelled"))
     are
       recovered
       [ ("frontier", int 12)
@@ -778,7 +778,7 @@ buildCancellationArtifact =
       ]
     timeline' <- crashAndRestart timeline "joined_cancellation_commit_refused"
     recovered <-
-      Timeline.runUntil timeline' "joined-cancellation-recovered" (\o -> pyEq (memberOf "durable_tasks" o) (task 2 "cancelled"))
+      Timeline.runUntil timeline' "joined-cancellation-recovered" (\o -> pythonEq (memberOf "durable_tasks" o) (task 2 "cancelled"))
     are
       recovered
       [ ("frontier", int 12)
@@ -817,7 +817,7 @@ buildCancellationAckLossArtifact =
         ]
       timeline' <- crashAndRestart timeline "joined_cancellation_committed_ack_lost"
       recovered <-
-        Timeline.runUntil timeline' "joined-cancellation-ack-recovered" (\o -> pyEq (memberOf "drive_calls" o) (int 2))
+        Timeline.runUntil timeline' "joined-cancellation-ack-recovered" (\o -> pythonEq (memberOf "drive_calls" o) (int 2))
       are recovered [("frontier", int 12), ("prepare_calls", int 1)]
       same recovered lost "durable_tasks"
       same recovered lost "lifecycle_attempts"
@@ -842,7 +842,7 @@ buildCloseRefusalArtifact =
       , ("scope_closes", int 1)
       ]
     timeline' <- crashAndRestart timeline "joined_scope_close_commit_refused"
-    recovered <- Timeline.runUntil timeline' "joined-close-recovered" (\o -> pyEq (memberOf "drive_calls" o) (int 2))
+    recovered <- Timeline.runUntil timeline' "joined-close-recovered" (\o -> pythonEq (memberOf "drive_calls" o) (int 2))
     same recovered refused "record_types"
     same recovered refused "durable_tasks"
     completed <- completeLiveWorker timeline' "joined-close-terminal-recovered"
@@ -869,7 +869,7 @@ buildCloseAckLossArtifact =
       ]
     timeline' <- crashAndRestart timeline "joined_scope_close_committed_ack_lost"
     recovered <-
-      Timeline.runUntil timeline' "joined-close-ack-recovered" (\o -> pyEq (memberOf "durable_tasks" o) (task 2 "cancelled"))
+      Timeline.runUntil timeline' "joined-close-ack-recovered" (\o -> pythonEq (memberOf "durable_tasks" o) (task 2 "cancelled"))
     are
       recovered
       [ ("frontier", int 12)
@@ -1132,7 +1132,7 @@ buildRegistrationRefusalArtifact =
       ensure (memberOf "engine_armed" refused == Null) "refused engine armed"
       timeline' <- crashAndRestart timeline "joined_registration_projection_commit_refused"
       recovered <-
-        Timeline.runUntil timeline' "joined-registration-projection-recovered" (\o -> pyEq (memberOf "engine_armed" o) (armed ["replacement"]))
+        Timeline.runUntil timeline' "joined-registration-projection-recovered" (\o -> pythonEq (memberOf "engine_armed" o) (armed ["replacement"]))
       is recovered "frontier" (int 12)
       endsWith recovered "record_types" registrationTail
       are
@@ -1172,7 +1172,7 @@ buildRegistrationAckLossArtifact =
         Timeline.runUntil
           timeline'
           "joined-registration-projection-ack-recovered"
-          (\o -> pyEq (memberOf "drive_calls" o) (int 3))
+          (\o -> pythonEq (memberOf "drive_calls" o) (int 3))
       is recovered "frontier" (int 12)
       forM_ ["record_types", "canonical_registrations"] (same recovered lost)
       are recovered [("engine_armed", armed ["replacement"]), ("status", String "awaiting")]
@@ -1206,7 +1206,7 @@ buildSealRefusalArtifact =
     are refused [("seal_calls", int 1), ("seal_refusals", int 1)]
     timeline' <- crashAndRestart timeline "joined_source_seal_commit_refused"
     reloaded <-
-      Timeline.runUntil timeline' "joined-seal-reloaded" (\o -> pyEq (memberOf "engine_armed" o) (armed ["default", "subscription"]))
+      Timeline.runUntil timeline' "joined-seal-reloaded" (\o -> pythonEq (memberOf "engine_armed" o) (armed ["default", "subscription"]))
     is reloaded "status" (String "awaiting")
     void (Timeline.command timeline' "source.seal" empty)
     recovered <- Timeline.observe timeline' "joined-seal-recovered"
@@ -1228,7 +1228,7 @@ buildSealAckLossArtifact =
     ensure (memberOf "engine_armed" lost == Null) "lost engine armed"
     are lost [("seal_ack_losses", int 1), ("seal_calls", int 1), ("seal_refusals", int 0)]
     timeline' <- crashAndRestart timeline "joined_source_seal_committed_ack_lost"
-    recovered <- Timeline.runUntil timeline' "joined-seal-ack-recovered" (\o -> pyEq (memberOf "engine_armed" o) (Array []))
+    recovered <- Timeline.runUntil timeline' "joined-seal-ack-recovered" (\o -> pythonEq (memberOf "engine_armed" o) (Array []))
     is recovered "frontier" (int 13)
     forM_ ["canonical_registrations", "lifecycle_attempts"] (same recovered lost)
     are recovered [("seal_calls", int 1), ("status", String "terminated")]

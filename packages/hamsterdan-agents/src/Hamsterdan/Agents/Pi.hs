@@ -122,7 +122,7 @@ maxResultBytes = 1000000
 
 -- | @f"one of {sorted(values)}"@.
 oneOf :: Set.Set Text -> Text
-oneOf values = "one of " <> repr (PyList (map PyStr (Set.toAscList values)))
+oneOf values = "one of " <> repr (LitList (map LitStr (Set.toAscList values)))
 
 -- | @_contract_fields(names, descriptions)@. The descriptions below cover
 -- the validator's field sets exactly (the reference checks this at run

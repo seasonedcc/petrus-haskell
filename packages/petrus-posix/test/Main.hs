@@ -539,6 +539,22 @@ fileSpec = describe "File" $ do
     makeDirectories (dir </> "file" </> "sub") 0o700 `shouldThrow` anyIOException
     fsyncPath (dir </> "a")
 
+  it "writes directly only to a regular file or a character device, every byte, raising on a failed write" $ withTemp $ \dir -> do
+    let path = dir </> "log"
+        payload = BS.concat (replicate 20000 "0123456789abcdef")
+    bracket (PosixIO.openFd path PosixIO.WriteOnly PosixIO.defaultFileFlags {PosixIO.creat = Just 0o600}) PosixIO.closeFd $ \fd -> do
+      target <- directFd fd >>= maybe (fail "a regular file is direct") pure
+      writeDirect target payload
+      writeDirect target "tail\n"
+    BS.readFile path `shouldReturn` (payload <> "tail\n")
+    bracket (PosixIO.openFd "/dev/null" PosixIO.WriteOnly PosixIO.defaultFileFlags) PosixIO.closeFd $ \fd ->
+      directFd fd >>= maybe (fail "/dev/null is direct") (`writeDirect` payload)
+    bracket PosixIO.createPipe (\(r, w) -> PosixIO.closeFd r >> PosixIO.closeFd w) $ \(_, w) ->
+      (() <$) <$> directFd w `shouldReturn` Nothing
+    bracket (PosixIO.openFd path PosixIO.ReadOnly PosixIO.defaultFileFlags) PosixIO.closeFd $ \fd -> do
+      target <- directFd fd >>= maybe (fail "a regular file is direct") pure
+      writeDirect target "x" `shouldThrow` anyIOException
+
 pollSpec :: Spec
 pollSpec = describe "Poll" $ do
   let withPipe = bracket PosixIO.createPipe (\(r, w) -> PosixIO.closeFd r >> PosixIO.closeFd w)

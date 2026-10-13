@@ -125,7 +125,7 @@ import Petrus.Activity qualified as Activity
 import Petrus.Impetus.History.Records
 import Petrus.Impetus.Instance (ImplementationRef (..))
 import Petrus.Impetus.Petrinet
-import Petrus.Json (Json (..), dumps, defaultDumps, lookupMember, parseJson, surrogateRefusingLoads)
+import Petrus.Json (Json (..), dumps, defaultDumps, lookupMember, parseJson, pythonTruthy, surrogateRefusingLoads)
 import Petrus.Json.Python (uuid4Hex)
 import Petrus.Motus.Dispatch.Absurd (ensureAbsurdSchema)
 import Petrus.Postgres (Connection, query, textParam)
@@ -608,23 +608,15 @@ sparkWorkActivity dsnBytes inv ctx = do
       textOf = \case
         String s -> s
         other -> either (const "") TE.decodeUtf8 (dumps defaultDumps other)
-      truthy = \case
-        Null -> False
-        Bool b -> b
-        Int n -> n /= 0
-        String s -> not (T.null s)
-        Array xs -> not (null xs)
-        Object xs -> not (null xs)
-        _ -> True
       barrier = case member "barrier" of
         String p | not (T.null p) -> Just (T.unpack p)
         _ -> Nothing
       continue =
         bracket (Pg.connect dsnBytes True) Pg.close $ \connection -> do
           case member "nap" of
-            nap | truthy nap -> threadDelay (round (napSeconds nap * 1e6))
+            nap | pythonTruthy nap -> threadDelay (round (napSeconds nap * 1e6))
             _ -> pure ()
-          when (truthy (member "boom")) $ throwIO (ValueError "boom requested")
+          when (pythonTruthy (member "boom")) $ throwIO (ValueError "boom requested")
           _ <-
             Pg.execute_
               connection

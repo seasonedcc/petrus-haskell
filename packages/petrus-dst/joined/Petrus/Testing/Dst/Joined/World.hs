@@ -72,7 +72,7 @@ import Petrus.Impetus.Instance
   )
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.Scope (LifecycleScope, lifecycleScope, scopeGeneration, scopeName)
-import Petrus.Json (Json (..))
+import Petrus.Json (Json (..), pythonEq)
 import Petrus.Motus.Dispatch (ActivityAttempt, AttemptFailure (..))
 import Petrus.Motus.Dispatch.Absurd
   ( AbsurdError (..)
@@ -1230,17 +1230,17 @@ validateCommand family c
   | isSeal family = if c.name == "source.seal" && empty c.payload then pure c else projection
   | isProjectionChain family = projection
   | isOpen family =
-      if c.name == "scope.open" && pyEq c.payload draft
+      if c.name == "scope.open" && pythonEq c.payload draft
         then pure c
         else refuse ("unsupported joined-open command " <> pythonStrRepr c.name)
   | isQuarantine family =
-      if (c.name == "scope.open" && pyEq c.payload draft)
-        || (c.name == "source.deliver-future" && pyEq c.payload (scoped "future-draft-3" 2))
+      if (c.name == "scope.open" && pythonEq c.payload draft)
+        || (c.name == "source.deliver-future" && pythonEq c.payload (scoped "future-draft-3" 2))
         then pure c
         else refuse ("unsupported joined scoped-quarantine command " <> pythonStrRepr c.name)
   | isScoped family =
-      if (c.name `elem` ["scope.open", "scope.reset"] && pyEq c.payload draft)
-        || (c.name == "source.deliver-stale" && pyEq c.payload (scoped "stale-draft-3" 1))
+      if (c.name `elem` ["scope.open", "scope.reset"] && pythonEq c.payload draft)
+        || (c.name == "source.deliver-stale" && pythonEq c.payload (scoped "stale-draft-3" 1))
         then pure c
         else refuse ("unsupported joined scoped-drop command " <> pythonStrRepr c.name)
   | family == FCloseAckLoss =
@@ -1252,7 +1252,7 @@ validateCommand family c
   | otherwise = cancellation
   where
     refuse = throwError . ProfileError "ValueError"
-    empty = pyEq (Object [])
+    empty = pythonEq (Object [])
     draft = Object [("name", String "draft")]
     scoped identity generation = Object [("identity", String identity), ("scope_generation", Int generation), ("value", Int 3)]
     delivery
@@ -1271,17 +1271,17 @@ validateCommand family c
       | otherwise = refuse ("unsupported joined-failure command " <> pythonStrRepr c.name)
     cancellation
       | c.name `elem` ["engine.drive", "worker.claim", "worker.complete-stale"] && empty c.payload = pure c
-      | c.name `elem` ["scope.open", "scope.reset"] && pyEq c.payload draft = pure c
+      | c.name `elem` ["scope.open", "scope.reset"] && pythonEq c.payload draft = pure c
       | c.name == "source.deliver"
           && isPyObject c.payload
-          && pyEq c.payload (Object [("identity", String "draft-input-3"), ("scope", String "draft"), ("value", Int 3)]) =
+          && pythonEq c.payload (Object [("identity", String "draft-input-3"), ("scope", String "draft"), ("value", Int 3)]) =
           pure c
       | otherwise = refuse ("unsupported joined-cancellation command " <> pythonStrRepr c.name)
     reset
       | c.name == "worker.complete" && empty c.payload = pure c
       | otherwise = cancellation
     close
-      | c.name == "scope.close" && pyEq c.payload draft = pure c
+      | c.name == "scope.close" && pythonEq c.payload draft = pure c
       | otherwise = reset
     nonEmptyString = \case
       String s -> not (T.null s)

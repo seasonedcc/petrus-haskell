@@ -43,13 +43,13 @@ import Petrus.Impetus.History.Records
   )
 import Petrus.Impetus.HistoryStore (HistoryStore (..))
 import Petrus.Impetus.Petrinet
-import Petrus.Json (Json (..))
+import Petrus.Json (Json (..), pythonEq)
 import Petrus.Postgres qualified as Pg
 import Petrus.Testing.Dst
 import Petrus.Testing.Dst.Engine.Common (engineCurrent, ensure, exactKeys, ioDoor, ioScenario, member, memberOf, path)
 import Petrus.Testing.Dst.Joined.Checkers qualified as C
 import Petrus.Testing.Dst.Joined.Identities qualified as Id
-import Petrus.Testing.Dst.Joined.Support (payloadAbsent, probeRecords, pyEq, strs, withProbe)
+import Petrus.Testing.Dst.Joined.Support (payloadAbsent, probeRecords, strs, withProbe)
 import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Json.Python.Exception (raised)
 import Petrus.Testing.Dst.Timeline qualified as Timeline
@@ -372,7 +372,7 @@ creationProfile variant dsn = do
         Profile
           { identity = cfg.identity
           , validate = \c ->
-              if c.name /= "engine.create" || not (pyEq c.payload (Object []))
+              if c.name /= "engine.create" || not (pythonEq c.payload (Object []))
                 then throwError (ProfileError "ValueError" "joined-creation profile accepts only engine.create with an empty payload")
                 else pure c
           , validateFault = \f ->
@@ -413,7 +413,7 @@ creationProfile variant dsn = do
 type Story = WorldT IO CreationGeneration
 
 is :: Observation -> Text -> Json -> Story ()
-is o key expected = ensure (pyEq (memberOf key o) expected) ("observation " <> o.name <> " " <> key)
+is o key expected = ensure (pythonEq (memberOf key o) expected) ("observation " <> o.name <> " " <> key)
 
 are :: Observation -> [(Text, Json)] -> Story ()
 are o = mapM_ (uncurry (is o))

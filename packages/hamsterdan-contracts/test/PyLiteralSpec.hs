@@ -14,22 +14,22 @@ spec :: Spec
 spec = describe "Hamsterdan.PyLiteral" $ do
   describe "repr" $ do
     it "chooses quotes as CPython does" $ do
-      repr (PyStr "plain") `shouldBe` "'plain'"
-      repr (PyStr "it's") `shouldBe` "\"it's\""
-      repr (PyStr "say \"hi\"") `shouldBe` "'say \"hi\"'"
-      repr (PyStr "both ' and \"") `shouldBe` "'both \\' and \"'"
+      repr (LitStr "plain") `shouldBe` "'plain'"
+      repr (LitStr "it's") `shouldBe` "\"it's\""
+      repr (LitStr "say \"hi\"") `shouldBe` "'say \"hi\"'"
+      repr (LitStr "both ' and \"") `shouldBe` "'both \\' and \"'"
     it "escapes controls and non-printables" $ do
-      repr (PyStr "a\tb\nc\rd\\e") `shouldBe` "'a\\tb\\nc\\rd\\\\e'"
-      repr (PyStr "\0\x1b\x7f\x80\xa0\xad") `shouldBe` "'\\x00\\x1b\\x7f\\x80\\xa0\\xad'"
-      repr (PyStr "\x2028\xfeff\x10ffff") `shouldBe` "'\\u2028\\ufeff\\U0010ffff'"
-      repr (PyStr "é中😀") `shouldBe` "'é中😀'"
+      repr (LitStr "a\tb\nc\rd\\e") `shouldBe` "'a\\tb\\nc\\rd\\\\e'"
+      repr (LitStr "\0\x1b\x7f\x80\xa0\xad") `shouldBe` "'\\x00\\x1b\\x7f\\x80\\xa0\\xad'"
+      repr (LitStr "\x2028\xfeff\x10ffff") `shouldBe` "'\\u2028\\ufeff\\U0010ffff'"
+      repr (LitStr "é中😀") `shouldBe` "'é中😀'"
     it "spells containers" $ do
-      repr (PyTuple []) `shouldBe` "()"
-      repr (PyTuple [PyInt 1]) `shouldBe` "(1,)"
-      repr (PyTuple [PyInt 1, PyNone]) `shouldBe` "(1, None)"
-      repr (PyList [PyBool True, PyFloat 1e16, PyFloat (-0.0)]) `shouldBe` "[True, 1e+16, -0.0]"
-      repr (PyDict [(PyStr "a", PyList []), (PyInt 2, PyDict [])]) `shouldBe` "{'a': [], 2: {}}"
-      repr (PyList [PyFloat (1 / 0), PyFloat (-1 / 0), PyFloat (0 / 0)]) `shouldBe` "[inf, -inf, nan]"
+      repr (LitTuple []) `shouldBe` "()"
+      repr (LitTuple [LitInt 1]) `shouldBe` "(1,)"
+      repr (LitTuple [LitInt 1, LitNone]) `shouldBe` "(1, None)"
+      repr (LitList [LitBool True, LitFloat 1e16, LitFloat (-0.0)]) `shouldBe` "[True, 1e+16, -0.0]"
+      repr (LitDict [(LitStr "a", LitList []), (LitInt 2, LitDict [])]) `shouldBe` "{'a': [], 2: {}}"
+      repr (LitList [LitFloat (1 / 0), LitFloat (-1 / 0), LitFloat (0 / 0)]) `shouldBe` "[inf, -inf, nan]"
     it "spells dashboard entries and digests" $ do
       let body = [("status", String "clear"), ("head", String "abc"), ("blocking", Int 0)]
       dictEntry "review" body `shouldBe` "review:{'status': 'clear', 'head': 'abc', 'blocking': 0}"
@@ -38,13 +38,13 @@ spec = describe "Hamsterdan.PyLiteral" $ do
   describe "literalEval" $ do
     it "parses the modeled literals" $ do
       literalEval "{'a': [1, (2,), -3.5e1, None, True], \"b\": ()}"
-        `shouldBe` Right (PyDict [(PyStr "a", PyList [PyInt 1, PyTuple [PyInt 2], PyFloat (-35), PyNone, PyBool True]), (PyStr "b", PyTuple [])])
-      literalEval "  0x_ff, 0o17, 0b1_0, 1_000," `shouldBe` Right (PyTuple [PyInt 255, PyInt 15, PyInt 2, PyInt 1000])
-      literalEval "'a' \"b\" r'\\n' '''c\nd'''" `shouldBe` Right (PyStr "ab\\nc\nd")
-      literalEval "'\\x41\\u00e9\\U0001F600\\101\\q'" `shouldBe` Right (PyStr "Aé😀A\\q")
-      literalEval "[\n  1,  # one\n  2,\n]\n" `shouldBe` Right (PyList [PyInt 1, PyInt 2])
+        `shouldBe` Right (LitDict [(LitStr "a", LitList [LitInt 1, LitTuple [LitInt 2], LitFloat (-35), LitNone, LitBool True]), (LitStr "b", LitTuple [])])
+      literalEval "  0x_ff, 0o17, 0b1_0, 1_000," `shouldBe` Right (LitTuple [LitInt 255, LitInt 15, LitInt 2, LitInt 1000])
+      literalEval "'a' \"b\" r'\\n' '''c\nd'''" `shouldBe` Right (LitStr "ab\\nc\nd")
+      literalEval "'\\x41\\u00e9\\U0001F600\\101\\q'" `shouldBe` Right (LitStr "Aé😀A\\q")
+      literalEval "[\n  1,  # one\n  2,\n]\n" `shouldBe` Right (LitList [LitInt 1, LitInt 2])
     it "merges Python-equal dict keys, keeping the first key and the last value" $
-      literalEval "{1: 'a', True: 'b', 1.0: 'c', 2: 'd'}" `shouldBe` Right (PyDict [(PyInt 1, PyStr "c"), (PyInt 2, PyStr "d")])
+      literalEval "{1: 'a', True: 'b', 1.0: 'c', 2: 'd'}" `shouldBe` Right (LitDict [(LitInt 1, LitStr "c"), (LitInt 2, LitStr "d")])
     it "classifies failures" $ do
       kindOf "{[]: 1}" `shouldBe` Just Unhashable
       kindOf "{(1, [2]): 3}" `shouldBe` Just Unhashable
@@ -80,7 +80,7 @@ spec = describe "Hamsterdan.PyLiteral" $ do
           let body = [("a", json), ("b'\"", second), ("\x1F600", Float (0 / 0)), ("c", Float (-1 / 0))]
            in (dictEntry "k" body === "k:" <> repr (fromJson (Object body)))
                 .&&. ( sortedItemsDigest "k" body
-                        === "k:" <> repr (PyList [PyTuple [PyStr key, fromJson item] | (key, item) <- body'])
+                        === "k:" <> repr (LitList [LitTuple [LitStr key, fromJson item] | (key, item) <- body'])
                      )
           where
             body' = [("a", json), ("b'\"", second), ("c", Float (-1 / 0)), ("\x1F600", Float (0 / 0))]
@@ -102,23 +102,23 @@ instance Arbitrary Finite where
         | otherwise =
             frequency
               [ (4, scalar)
-              , (1, PyList <$> small (value (n `div` 3)))
-              , (1, PyTuple <$> small (value (n `div` 3)))
-              , (1, PyDict . dedupe <$> small ((,) <$> key <*> value (n `div` 3)))
+              , (1, LitList <$> small (value (n `div` 3)))
+              , (1, LitTuple <$> small (value (n `div` 3)))
+              , (1, LitDict . dedupe <$> small ((,) <$> key <*> value (n `div` 3)))
               ]
       small gen = do
         count <- chooseInt (0, 3)
         vectorOf count gen
       scalar =
         oneof
-          [ pure PyNone
-          , PyBool <$> arbitrary
-          , PyInt <$> arbitrary
-          , PyInt . (* (10 ^ (30 :: Int))) <$> arbitrary
-          , PyFloat <$> (arbitrary `suchThat` (\d -> not (isNaN d || isInfinite d)))
-          , PyStr . T.pack <$> listOf character
+          [ pure LitNone
+          , LitBool <$> arbitrary
+          , LitInt <$> arbitrary
+          , LitInt . (* (10 ^ (30 :: Int))) <$> arbitrary
+          , LitFloat <$> (arbitrary `suchThat` (\d -> not (isNaN d || isInfinite d)))
+          , LitStr . T.pack <$> listOf character
           ]
-      key = oneof [PyStr . T.pack <$> listOf character, PyInt <$> arbitrary, PyTuple . pure . PyStr . T.pack <$> listOf character]
+      key = oneof [LitStr . T.pack <$> listOf character, LitInt <$> arbitrary, LitTuple . pure . LitStr . T.pack <$> listOf character]
       character =
         frequency
           [ (6, choose ('a', 'z'))

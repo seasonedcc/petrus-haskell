@@ -95,9 +95,9 @@ registrationInventory clients config = do
   when (Set.fromList observedEvents /= Set.fromList appEvents || length observedEvents /= length appEvents) $
     refuse
       ( "GitHub App events do not match the required first-demo contract: expected="
-          <> repr (PyList (map PyStr appEvents))
+          <> repr (LitList (map LitStr appEvents))
           <> " observed="
-          <> repr (PyList (map PyStr observedEvents))
+          <> repr (LitList (map LitStr observedEvents))
       )
   installations <- collect app (0 :: Int) (Just "/app/installations?per_page=100") []
   inventory <- forM config.accounts (accountInventory clients installations)
@@ -204,7 +204,7 @@ validatePermissions value owner = case value of
         )
   _ -> refuse (owner <> " permissions are malformed")
   where
-    pairs items = repr (PyList [PyTuple [PyStr k, PyStr v] | (k, v) <- items])
+    pairs items = repr (LitList [LitTuple [LitStr k, LitStr v] | (k, v) <- items])
 
 -- | @_valid_repository@.
 validRepository :: Json -> Bool

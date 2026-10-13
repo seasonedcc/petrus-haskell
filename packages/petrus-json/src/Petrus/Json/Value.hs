@@ -6,17 +6,23 @@
 -- object members in insertion order (CPython dicts are ordered, and Petrus
 -- serializes models field by field).
 --
--- Equality is the reference implementation's /value/ equality: numbers compare
--- across integer, float, and boolean the way CPython compares them
--- (@1 == 1.0 == True@), and objects compare as mappings regardless of member
--- order (a repeated key counts once, with its last value, as in the @dict@
--- the members build). Over finite numbers it is an equivalence relation;
--- like CPython's @==@, a NaN equals nothing, itself included. Token identity in a marking is defined by that equality, so replay
--- and interop depend on it. Use 'exactEq' where the reference compares
--- canonical spellings instead, and 'typeExactEq' where it compares Python
--- types node by node but ignores member order.
+-- Equality ('pythonEq', the 'Eq' instance) is the reference implementation's
+-- /value/ equality: numbers compare across integer, float, and boolean the
+-- way CPython compares them (@1 == 1.0 == True@, through 'pyNumberEq'),
+-- and objects compare as mappings regardless of member order (a repeated
+-- key counts once, with its last value, as in the @dict@ the members
+-- build). Over finite numbers it is an equivalence relation; like CPython's
+-- @==@, a NaN equals nothing, itself included. Token identity in a marking
+-- is defined by that equality, so replay and interop depend on it. Use
+-- 'exactEq' where the reference compares canonical spellings instead, and
+-- 'typeExactEq' where it compares Python types node by node but ignores
+-- member order.
 module Petrus.Json.Value
   ( Json (..)
+  , pythonEq
+  , pythonTruthy
+  , PyNumber (..)
+  , pyNumberEq
   , exactEq
   , typeExactEq
   , lookupMember
@@ -30,6 +36,8 @@ import Control.DeepSeq (NFData (..))
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
+import Data.Text qualified as T
+import GHC.Exts (inline)
 
 -- | A JSON value with CPython-compatible number and object semantics.
 data Json
@@ -57,7 +65,8 @@ instance NFData Json where
     Array items -> rnf items
     Object members -> rnf members
 
--- | CPython value equality.
+-- | CPython's @left == right@ between the objects @json.loads@ builds for
+-- two values (the 'Eq' instance): see the module header.
 pythonEq :: Json -> Json -> Bool
 pythonEq Null Null = True
 pythonEq (String a) (String b) = a == b
@@ -69,30 +78,56 @@ pythonEq (Object as) (Object bs) =
   let left = Map.fromList as
       right = Map.fromList bs
    in Map.keysSet left == Map.keysSet right && and (Map.intersectionWith pythonEq left right)
-pythonEq a b = case (numeric a, numeric b) of
-  (Just x, Just y) -> numericEq x y
+pythonEq a b = case (jsonNumber a, jsonNumber b) of
+  -- Inlined at this one call ('inline'), so '==' on two numbers allocates
+  -- no 'PyNumber' and compiles to the code of the copy it replaces; the
+  -- other callers call 'pyNumberEq'.
+  (Just x, Just y) -> inline pyNumberEq x y
   _ -> False
 
-data Numeric = NInt Integer | NFloat Double
+-- | @bool(value)@ of the object @json.loads@ builds: @None@, @False@, zero
+-- (@0@, @0.0@, @-0.0@) and an empty string, list or dict are false;
+-- everything else, NaN included, is true.
+pythonTruthy :: Json -> Bool
+pythonTruthy = \case
+  Null -> False
+  Bool b -> b
+  Int i -> i /= 0
+  Float d -> d /= 0
+  String s -> not (T.null s)
+  Array items -> not (null items)
+  Object members -> not (null members)
 
-numeric :: Json -> Maybe Numeric
-numeric = \case
-  Bool b -> Just (NInt (if b then 1 else 0))
-  Int i -> Just (NInt i)
-  Float d -> Just (NFloat d)
+-- | A number as Python's @==@ compares it: an @int@ (or @bool@) exactly, a
+-- @float@ by its value.
+data PyNumber = PyExact Integer | PyInexact Double
+
+-- | The number a value is (a @bool@, @int@ or @float@).
+jsonNumber :: Json -> Maybe PyNumber
+jsonNumber = \case
+  Bool b -> Just (PyExact (if b then 1 else 0))
+  Int i -> Just (PyExact i)
+  Float d -> Just (PyInexact d)
   _ -> Nothing
 
-numericEq :: Numeric -> Numeric -> Bool
-numericEq (NInt a) (NInt b) = a == b
-numericEq (NFloat a) (NFloat b) = a == b
-numericEq (NInt a) (NFloat b) = intFloatEq a b
-numericEq (NFloat a) (NInt b) = intFloatEq b a
+-- | CPython's numeric @==@: an @int@ and a @float@ compare exactly (no
+-- rounding of either side), NaN equals nothing and an infinity equals no
+-- @int@. The one numeric core of Python @==@ in the port: every Python
+-- value model compares numbers with it ('Json' in 'pythonEq', petrus-json's
+-- @PyObject@ ("Petrus.Json.Python.Object"), the @ast.literal_eval@ values
+-- of @Hamsterdan.PyLiteral@, the engine-file loader's values, and the
+-- @sqlite3@ values motus's local dispatch compares), and so do the
+-- int-against-float checks of a pydantic @Literal[n]@ (petrus-impetus,
+-- Hamsterdan's codecs) and of petrus-history-store's SQLite columns.
+pyNumberEq :: PyNumber -> PyNumber -> Bool
+pyNumberEq (PyExact a) (PyExact b) = a == b
+pyNumberEq (PyInexact a) (PyInexact b) = a == b
+pyNumberEq (PyExact a) (PyInexact b) = exactFloatEq a b
+pyNumberEq (PyInexact a) (PyExact b) = exactFloatEq b a
 
--- CPython compares an int and a float exactly, never by rounding the int.
-intFloatEq :: Integer -> Double -> Bool
-intFloatEq i d
-  | isNaN d || isInfinite d = False
-  | otherwise = toRational d == fromInteger i
+exactFloatEq :: Integer -> Double -> Bool
+exactFloatEq integral floating =
+  not (isNaN floating || isInfinite floating) && toRational floating == fromInteger integral
 
 -- | Structural equality that also distinguishes integer from float spellings
 -- and object member order: two values are 'exactEq' exactly when CPython

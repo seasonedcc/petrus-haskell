@@ -84,7 +84,7 @@ import Hamsterdan.Host.Python (RuntimeError (..), pattern TypeError, ValueError 
 import Hamsterdan.Host.V5.Claim (CurrentClaim (..), Phase (..))
 import Hamsterdan.Host.V5.Ingress (IngressEntry (..), ingressFrom)
 import Hamsterdan.Host.V5.Timers (TimerFact, timerHistory, timerValue)
-import Hamsterdan.PyLiteral (PyValue (PyDict), toJson)
+import Hamsterdan.PyLiteral (PyValue (LitDict), toJson)
 import Petrus.Impetus.Instance.FailureText (PyObject (PyStr), PythonException (..))
 import Hamsterdan.Readiness.NetV5.Board (gateFacts)
 import Hamsterdan.Readiness.NetV5.Gating
@@ -601,7 +601,7 @@ conversationContext runtime = do
         _ -> throwIO (PythonException "KeyError" [PyStr "entries"])
       view <- either raisePython pure (gateFacts entries)
       forM view $ \(kind, body) -> do
-        bodyJson <- maybe (throwIO (TypeError "V5 board fact is not JSON")) pure (toJson (PyDict body))
+        bodyJson <- maybe (throwIO (TypeError "V5 board fact is not JSON")) pure (toJson (LitDict body))
         pure (Object [("kind", String kind), ("body", bodyJson)])
     [] -> pure []
   memories <- markingPlace runtime "review.memory"
