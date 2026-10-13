@@ -1,6 +1,6 @@
 # petrus-processes benchmarks
 
-<!-- scripts/bench: measured sources 81fbccb5ce63c2d5 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 53ceae793d058af2 at ba2323d32140 -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
@@ -11,8 +11,8 @@ and 2.8–15× on values and the Activity.
 
 ## Current figures
 
-Measured on 2026-10-12, 02:41–02:44 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.58–2.87:
+Measured on 2026-10-12, 23:14–23:17 local (UTC-3), at commit `679f2e6`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 3.64–4.52:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-processes 3
@@ -25,20 +25,20 @@ Haskell (above 1 means Haskell is faster). The server was `scripts/with-postgres
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `model.child-identity` | 628 ns | 1.75 µs | 2.79× | 2.75× | 635 ns, 628 ns, 618 ns | 1.75 µs, 1.75 µs, 1.78 µs |
-| `model.spawn-spec-digest` | 2.56 µs | 15.3 µs | 5.99× | 5.98× | 2.56 µs, 2.5 µs, 2.56 µs | 15.3 µs, 15.3 µs, 15.4 µs |
-| `model.spawn-spec-roundtrip` | 1.14 µs | 13.9 µs | 12.22× | 12.14× | 1.15 µs, 1.14 µs, 1.14 µs | 14 µs, 13.9 µs, 13.9 µs |
-| `call.request-envelope` | 1.34 µs | 14.4 µs | 10.76× | 10.67× | 1.34 µs, 1.33 µs, 1.34 µs | 14.3 µs, 14.4 µs, 14.4 µs |
-| `call.result-envelope` | 1.45 µs | 15.1 µs | 10.40× | 10.30× | 1.46 µs, 1.45 µs, 1.45 µs | 15.1 µs, 15.1 µs, 15.1 µs |
-| `call.reply-from-envelope` | 760 ns | 11.6 µs | 15.27× | 15.23× | 759 ns, 760 ns, 761 ns | 11.6 µs, 11.6 µs, 11.6 µs |
-| `call.roundtrip-postgres` | 603 µs | 949 µs | 1.58× | 1.54× | 591 µs, 614 µs, 603 µs | 978 µs, 946 µs, 949 µs |
-| `spawn.activity` | 5.68 µs | 45.8 µs | 8.05× | 7.95× | 5.76 µs, 5.68 µs, 5.66 µs | 45.8 µs, 45.8 µs, 45.8 µs |
-| `postgres.claim-prior` | 65.1 µs | 112 µs | 1.72× | 1.61× | 64.6 µs, 65.1 µs, 66 µs | 112 µs, 112 µs, 107 µs |
-| `postgres.child-of` | 39.9 µs | 60.4 µs | 1.51× | 1.48× | 40 µs, 39.8 µs, 39.9 µs | 59 µs, 60.8 µs, 60.4 µs |
-| `postgres.claim-new` | 79.8 µs | 132 µs | 1.65× | 1.65× | 79.8 µs, 79.8 µs, 76.1 µs | 132 µs, 132 µs, 129 µs |
-| `postgres.spawn-activity` | 82 µs | 183 µs | 2.23× | 2.19× | 82 µs, 85.2 µs, 81.6 µs | 183 µs, 187 µs, 183 µs |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `model.child-identity` | 664 ns | 1.74 µs | 2.63× | 2.60× | 3 of 3 | 664 ns, 674 ns, 663 ns | 1.74 µs, 1.75 µs, 1.74 µs |
+| `model.spawn-spec-digest` | 2.6 µs | 15.2 µs | 5.84× | 5.45× | 3 of 3 | 2.81 µs, 2.6 µs, 2.59 µs | 15.3 µs, 15.1 µs, 15.2 µs |
+| `model.spawn-spec-roundtrip` | 1.25 µs | 14.1 µs | 11.23× | 10.87× | 3 of 3 | 1.3 µs, 1.25 µs, 1.25 µs | 14.1 µs, 13.9 µs, 14.1 µs |
+| `call.request-envelope` | 1.31 µs | 14.4 µs | 10.97× | 10.93× | 3 of 3 | 1.31 µs, 1.31 µs, 1.31 µs | 14.4 µs, 14.4 µs, 14.4 µs |
+| `call.result-envelope` | 1.4 µs | 15.1 µs | 10.75× | 10.72× | 3 of 3 | 1.4 µs, 1.41 µs, 1.4 µs | 15.1 µs, 15.2 µs, 15.1 µs |
+| `call.reply-from-envelope` | 682 ns | 11.7 µs | 17.13× | 17.02× | 3 of 3 | 682 ns, 682 ns, 677 ns | 11.7 µs, 11.6 µs, 11.8 µs |
+| `call.roundtrip-postgres` | 627 µs | 981 µs | 1.56× | 1.55× | 3 of 3 | 627 µs, 632 µs, 626 µs | 978 µs, 981 µs, 981 µs |
+| `spawn.activity` | 5.85 µs | 45.5 µs | 7.77× | 7.65× | 3 of 3 | 5.82 µs, 5.85 µs, 5.92 µs | 45.5 µs, 45.5 µs, 45.3 µs |
+| `postgres.claim-prior` | 65.6 µs | 108 µs | 1.65× | 1.64× | 3 of 3 | 65.9 µs, 65.6 µs, 65.5 µs | 108 µs, 108 µs, 108 µs |
+| `postgres.child-of` | 39.6 µs | 60 µs | 1.51× | 1.49× | 3 of 3 | 40.2 µs, 39.6 µs, 39.6 µs | 60 µs, 60 µs, 60.3 µs |
+| `postgres.claim-new` | 80.5 µs | 133 µs | 1.66× | 1.65× | 3 of 3 | 80.5 µs, 80.8 µs, 80.3 µs | 133 µs, 134 µs, 133 µs |
+| `postgres.spawn-activity` | 89.5 µs | 189 µs | 2.11× | 1.99× | 3 of 3 | 93.7 µs, 88.1 µs, 89.5 µs | 187 µs, 189 µs, 189 µs |
 
 ## Earlier figures
 
