@@ -1,7 +1,7 @@
 cabal-version:      3.4
 name:               petrus-net-lint
 version:            0.1.0.0
-synopsis:           Finds a state machine dressed as a Petri net
+synopsis:           Finds nets whose marking collapsed into one token
 description:
   A Petrus net's state is its marking: which tokens sit in which places.
   "Petrus.Net.Lint" finds, in a net's structure and the outcomes its author

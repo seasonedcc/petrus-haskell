@@ -4,7 +4,7 @@ A Petri net is not a state machine with one central state. Its state is its mark
 tokens sit in which places, spread across the net. A process's concurrency, its waiting, and its
 scarce resources live in the net's places and transitions, never inside a token's data.
 
-A net can still be a state machine in disguise: one token walking a chain of places, with each
+A net's marking can still collapse into one token: one token walking a chain of places, with each
 handler deciding where it goes next and counting what it used in its own fields. Petrus runs such
 a net fine, but nothing in its structure shows what waits on what or what is scarce, so no tool
 can check it. This lint finds the signs, in a net's structure and in what its author declares,

@@ -1,4 +1,4 @@
--- | The lint on small nets: a state machine dressed as a net, a real mutex,
+-- | The lint on small nets: a marking collapsed into one token, a real mutex,
 -- and one net for each rule.
 module LintSpec (spec) where
 
@@ -85,7 +85,7 @@ mutexDeclared = noDeclarations {initial = Map.fromList [("lock", 1)], finalPlace
 
 spec :: Spec
 spec = describe "the net lint" $ do
-  it "finds a state machine dressed as a net, in its shape and its handler's choice" $
+  it "finds a marking collapsed into one token, in its shape and its handler's choice" $
     rulesOf (lint builderRun builderRunDeclared [])
       `shouldBe` [("single-token-s-net", "net"), ("no-concurrency", "net"), ("handler-choice", "build")]
 

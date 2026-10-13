@@ -1,5 +1,5 @@
--- | The net lint (@README.md@): the signs of a state machine
--- dressed as a Petri net, found in a net's structure and its declarations.
+-- | The net lint (@README.md@): the signs of a net whose marking collapsed
+-- into one token, found in a net's structure and its declarations.
 --
 -- A net is not a state machine with one central state. Its state is its
 -- marking: which tokens sit in which places, spread across the net. A

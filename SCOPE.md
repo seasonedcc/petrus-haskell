@@ -21,7 +21,7 @@ Python, through its Net-definition v3 or Net document v1:
 
 | Package | What it does | Why |
 | --- | --- | --- |
-| `petrus-net-lint` | Finds the signs of a state machine dressed as a Petri net, in a net's structure and its author's declared outcomes ([README](packages/petrus-net-lint/README.md)). | A net whose state hides inside one token shows nothing a tool can check: what runs at the same time, what waits on what, what is scarce. |
+| `petrus-net-lint` | Finds the signs of a net whose marking collapsed into one token, in a net's structure and its author's declared outcomes ([README](packages/petrus-net-lint/README.md)). | A net whose state hides inside one token shows nothing a tool can check: what runs at the same time, what waits on what, what is scarce. |
 
 ## Out of scope
 
