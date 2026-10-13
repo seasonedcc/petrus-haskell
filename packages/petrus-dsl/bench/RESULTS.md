@@ -1,6 +1,6 @@
 # DSL benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources 396f8fb6b7cb0f30 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources f9de9ae8ef64743d at f82d9988cb9a -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` time the same two
 workloads. Both are the `chain` and `stamped` builders of
@@ -53,11 +53,23 @@ was pinned at `upstream/petrus` 3f85fc2.
 
 ## Current figures
 
-Measured on 2026-10-12, 02:55–02:57 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.49–2.84:
+Measured on 2026-10-12, 22:53–22:56 local (UTC-3), at commit `f82d998`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.58–3.43:
 three interleaved repetitions, alternating which side goes first, of
 
-    scripts/bench-compare petrus-dsl 3
+    scripts/bench-compare petrus-dsl 3 \
+        --map 'chain.chain-1000.build=build/chain-1000' \
+        --map 'chain.chain-1000.build+v3=build+v3/chain-1000' \
+        --map 'chain.chain-10000.build=build/chain-10000' \
+        --map 'chain.chain-10000.build+v3=build+v3/chain-10000' \
+        --map 'stamped.stamped-10.build=build/stamped-10' \
+        --map 'stamped.stamped-10.build+v3=build+v3/stamped-10' \
+        --map 'stamped.stamped-100.build=build/stamped-100' \
+        --map 'stamped.stamped-100.build+v3=build+v3/stamped-100' \
+        --map 'stamped.stamped-1000.build=build/stamped-1000' \
+        --map 'stamped.stamped-1000.build+v3=build+v3/stamped-1000'
+
+(the maps pair the Haskell rows with the twin's, whose names differ).
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
@@ -67,18 +79,18 @@ Haskell (above 1 means Haskell is faster). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `chain.chain-1000.build` | 9.01 ms | 29.1 ms | 3.23× | 3.22× | 8.98 ms, 9.01 ms, 9.1 ms | 29.1 ms, 29.1 ms, 29.3 ms |
-| `chain.chain-1000.build+v3` | 18.6 ms | 111 ms | 5.97× | 5.94× | 18.7 ms, 18.6 ms, 18.6 ms | 111 ms, 112 ms, 111 ms |
-| `chain.chain-10000.build` | 147 ms | 334 ms | 2.27× | 2.27× | 146 ms, 147 ms, 147 ms | 334 ms, 333 ms, 335 ms |
-| `chain.chain-10000.build+v3` | 273 ms | 1.24 s | 4.54× | 4.48× | 273 ms, 277 ms, 273 ms | 1.24 s, 1.24 s, 1.23 s |
-| `stamped.stamped-10.build` | 242 µs | 1.44 ms | 5.95× | 5.95× | 242 µs, 242 µs, 242 µs | 1.44 ms, 1.44 ms, 1.44 ms |
-| `stamped.stamped-10.build+v3` | 667 µs | 6.37 ms | 9.55× | 9.49× | 667 µs, 671 µs, 662 µs | 6.37 ms, 6.37 ms, 6.32 ms |
-| `stamped.stamped-100.build` | 3.81 ms | 15.3 ms | 4.02× | 3.98× | 3.84 ms, 3.81 ms, 3.81 ms | 15.3 ms, 15.3 ms, 15.3 ms |
-| `stamped.stamped-100.build+v3` | 9.36 ms | 63.9 ms | 6.83× | 6.83× | 9.35 ms, 9.4 ms, 9.36 ms | 63.9 ms, 64.3 ms, 63.9 ms |
-| `stamped.stamped-1000.build` | 73.2 ms | 255 ms | 3.48× | 3.47× | 73.5 ms, 73.2 ms, 73 ms | 260 ms, 254 ms, 255 ms |
-| `stamped.stamped-1000.build+v3` | 143 ms | 779 ms | 5.45× | 5.43× | 143 ms, 143 ms, 143 ms | 789 ms, 779 ms, 777 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `chain.chain-1000.build` | 9.31 ms | 29.3 ms | 3.15× | 3.15× | 3 of 3 | 9.39 ms, 9.31 ms, 9.22 ms | 30.2 ms, 29.3 ms, 29.3 ms |
+| `chain.chain-1000.build+v3` | 16.9 ms | 112 ms | 6.65× | 6.61× | 3 of 3 | 17 ms, 16.8 ms, 16.9 ms | 112 ms, 112 ms, 112 ms |
+| `chain.chain-10000.build` | 147 ms | 342 ms | 2.33× | 2.32× | 3 of 3 | 147 ms, 148 ms, 146 ms | 342 ms, 344 ms, 338 ms |
+| `chain.chain-10000.build+v3` | 279 ms | 1.25 s | 4.49× | 4.45× | 3 of 3 | 280 ms, 278 ms, 279 ms | 1.25 s, 1.25 s, 1.25 s |
+| `stamped.stamped-10.build` | 221 µs | 1.44 ms | 6.52× | 6.46× | 3 of 3 | 223 µs, 220 µs, 221 µs | 1.44 ms, 1.46 ms, 1.44 ms |
+| `stamped.stamped-10.build+v3` | 562 µs | 6.38 ms | 11.35× | 11.19× | 3 of 3 | 562 µs, 556 µs, 565 µs | 6.38 ms, 6.42 ms, 6.32 ms |
+| `stamped.stamped-100.build` | 3.99 ms | 15.4 ms | 3.86× | 3.84× | 3 of 3 | 4.01 ms, 3.98 ms, 3.99 ms | 15.5 ms, 15.3 ms, 15.4 ms |
+| `stamped.stamped-100.build+v3` | 8.49 ms | 64.5 ms | 7.59× | 7.54× | 3 of 3 | 8.53 ms, 8.49 ms, 8.41 ms | 64.3 ms, 64.5 ms, 64.6 ms |
+| `stamped.stamped-1000.build` | 70.8 ms | 257 ms | 3.63× | 3.59× | 3 of 3 | 71.5 ms, 69.9 ms, 70.8 ms | 257 ms, 261 ms, 257 ms |
+| `stamped.stamped-1000.build+v3` | 137 ms | 791 ms | 5.76× | 5.62× | 3 of 3 | 143 ms, 137 ms, 137 ms | 801 ms, 791 ms, 782 ms |
 
 ## Earlier figures
 
