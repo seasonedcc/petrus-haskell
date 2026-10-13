@@ -1,6 +1,6 @@
 # agenticus-effect benchmark results
 
-<!-- scripts/bench: measured sources 6dfbc2563f96dee2 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 58b8b899b48a81e2 at 13f7a84d2779 -->
 
 Twin workloads: `bench/Bench/Effect.hs` (tasty-bench) and
 `bench/python_effect.py` (the pinned reference, `upstream/petrus` @ 3f85fc2).
@@ -22,8 +22,8 @@ Twin workloads: `bench/Bench/Effect.hs` (tasty-bench) and
 
 ## Current figures
 
-Measured on 2026-10-12, 03:07–03:16 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.18–2.54:
+Measured on 2026-10-12, 22:18–22:26 local (UTC-3), at commit `424aa4e`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 1.80–2.65:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-agenticus-core 3 --python python_catalog.py --python python_effect.py --python python_hands.py --python python_thread.py
@@ -36,14 +36,14 @@ Haskell (above 1 means Haskell is faster). The same three repetitions measured t
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `effect.digest-1KB` | 8.43 µs | 36.8 µs | 4.36× | 4.33× | 8.45 µs, 8.43 µs, 8.39 µs | 36.8 µs, 36.5 µs, 36.9 µs |
-| `effect.digest-100KB` | 723 µs | 2.85 ms | 3.94× | 3.91× | 721 µs, 723 µs, 725 µs | 2.88 ms, 2.83 ms, 2.85 ms |
-| `effect.digest-1MB` | 8.92 ms | 29.1 ms | 3.26× | 3.22× | 8.89 ms, 9.04 ms, 8.92 ms | 29.3 ms, 29.1 ms, 28.8 ms |
-| `effect.digest-1MB-strict-payload` | 5.05 ms | — | — | — | 5.04 ms, 5.09 ms, 5.05 ms |  |
-| `effect.gateway-execute` | 1.75 µs | 22.1 µs | 12.60× | 12.58× | 1.74 µs, 1.75 µs, 1.76 µs | 22.2 µs, 22.1 µs, 22.1 µs |
-| `effect.gateway-replay` | 1.71 µs | 21.5 µs | 12.54× | 12.50× | 1.72 µs, 1.71 µs, 1.71 µs | 21.4 µs, 21.5 µs, 21.5 µs |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `effect.digest-1KB` | 6.9 µs | 36.9 µs | 5.35× | 5.32× | 3 of 3 | 6.9 µs, 6.9 µs, 6.9 µs | 37.2 µs, 36.7 µs, 36.9 µs |
+| `effect.digest-100KB` | 660 µs | 2.83 ms | 4.30× | 4.28× | 3 of 3 | 660 µs, 662 µs, 659 µs | 2.82 ms, 2.83 ms, 2.84 ms |
+| `effect.digest-1MB` | 11.8 ms | 29 ms | 2.46× | 2.44× | 3 of 3 | 11.8 ms, 11.8 ms, 11.9 ms | 28.8 ms, 29 ms, 29 ms |
+| `effect.digest-1MB-strict-payload` | 4.17 ms | — | — | — | — | 4.16 ms, 4.17 ms, 4.17 ms |  |
+| `effect.gateway-execute` | 1.44 µs | 22.2 µs | 15.41× | 15.34× | 3 of 3 | 1.45 µs, 1.42 µs, 1.44 µs | 22.2 µs, 22 µs, 22.2 µs |
+| `effect.gateway-replay` | 1.4 µs | 21.7 µs | 15.55× | 15.17× | 3 of 3 | 1.39 µs, 1.43 µs, 1.4 µs | 21.8 µs, 21.7 µs, 21.7 µs |
 
 ## Results
 

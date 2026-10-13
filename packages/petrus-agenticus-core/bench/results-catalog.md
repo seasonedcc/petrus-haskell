@@ -1,6 +1,6 @@
 # agenticus-catalog benchmark results
 
-<!-- scripts/bench: measured sources 6dfbc2563f96dee2 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 58b8b899b48a81e2 at 13f7a84d2779 -->
 
 These are twin workloads: `bench/Bench/Catalog.hs` (tasty-bench) and
 `bench/python_catalog.py`, which runs the pinned reference
@@ -19,8 +19,8 @@ kinds with all ten capabilities.
 
 ## Current figures
 
-Measured on 2026-10-12, 03:07–03:16 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.18–2.54:
+Measured on 2026-10-12, 22:18–22:26 local (UTC-3), at commit `424aa4e`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 1.80–2.65:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-agenticus-core 3 --python python_catalog.py --python python_effect.py --python python_hands.py --python python_thread.py
@@ -33,12 +33,12 @@ Haskell (above 1 means Haskell is faster). The same three repetitions measured t
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `catalog.resolve-6-kinds` | 2.43 µs | 14.9 µs | 6.12× | 5.96× | 2.43 µs, 2.48 µs, 2.43 µs | 14.9 µs, 14.9 µs, 14.5 µs |
-| `catalog.snapshot-to-json` | 6.81 µs | 14.4 µs | 2.12× | 2.09× | 6.81 µs, 6.83 µs, 6.75 µs | 14.7 µs, 14.4 µs, 14.1 µs |
-| `catalog.snapshot-from-data` | 57.3 µs | 109 µs | 1.91× | 1.81× | 61 µs, 57.1 µs, 57.3 µs | 111 µs, 109 µs, 109 µs |
-| `catalog.register+enable-1000` | 683 µs | 2.79 ms | 4.09× | 4.01× | 687 µs, 682 µs, 683 µs | 2.79 ms, 2.82 ms, 2.74 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `catalog.resolve-6-kinds` | 2.43 µs | 14.7 µs | 6.08× | 6.03× | 3 of 3 | 2.4 µs, 2.43 µs, 2.43 µs | 14.8 µs, 14.7 µs, 14.6 µs |
+| `catalog.snapshot-to-json` | 5.45 µs | 14.3 µs | 2.63× | 2.59× | 3 of 3 | 5.41 µs, 5.53 µs, 5.45 µs | 14 µs, 14.8 µs, 14.3 µs |
+| `catalog.snapshot-from-data` | 47.4 µs | 111 µs | 2.34× | 2.34× | 3 of 3 | 47.5 µs, 47.1 µs, 47.4 µs | 111 µs, 111 µs, 111 µs |
+| `catalog.register+enable-1000` | 661 µs | 2.81 ms | 4.25× | 4.15× | 3 of 3 | 678 µs, 661 µs, 661 µs | 2.81 ms, 2.8 ms, 2.84 ms |
 
 ## Results
 

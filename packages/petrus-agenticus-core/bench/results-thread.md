@@ -1,6 +1,6 @@
 # Thread lifecycle benchmark results
 
-<!-- scripts/bench: measured sources 6dfbc2563f96dee2 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 58b8b899b48a81e2 at 13f7a84d2779 -->
 
 Workload: 1000 Episodes × 4 Turns on one Thread (each Turn accepts one
 append and settles completed; each Episode settles completed with a fresh
@@ -8,8 +8,8 @@ Continuation). Both sides run the same five measurements.
 
 ## Current figures
 
-Measured on 2026-10-12, 03:07–03:16 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.18–2.54:
+Measured on 2026-10-12, 22:18–22:26 local (UTC-3), at commit `424aa4e`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 1.80–2.65:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-agenticus-core 3 --python python_catalog.py --python python_effect.py --python python_hands.py --python python_thread.py
@@ -22,13 +22,13 @@ Haskell (above 1 means Haskell is faster). The same three repetitions measured t
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `thread.build-1000x4` | 15.3 ms | 21.5 s | 1402.87× | 1402.87× | 15.4 ms, 15.3 ms, 15.3 ms | 21.8 s, 21.4 s, 21.5 s |
-| `thread.episode-after-1000` | 23.5 µs | 42.7 ms | 1820.01× | 1786.66× | 24.3 µs, 23.5 µs, 23.5 µs | 43.4 ms, 42.7 ms, 42.7 ms |
-| `thread.to-json-1000x4` | 3.96 ms | 10.2 ms | 2.56× | 2.49× | 4 ms, 3.96 ms, 3.96 ms | 9.97 ms, 10.2 ms, 10.2 ms |
-| `thread.dumps-only-1000x4` | 3.4 ms | 6.01 ms | 1.77× | 1.76× | 3.42 ms, 3.4 ms, 3.36 ms | 6.01 ms, 6.16 ms, 5.96 ms |
-| `thread.from-data-1000x4` | 15.4 ms | 56.3 ms | 3.66× | 3.59× | 15.3 ms, 15.4 ms, 15.8 ms | 56 ms, 56.3 ms, 56.6 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `thread.build-1000x4` | 13.8 ms | 21.6 s | 1566.40× | 1558.00× | 3 of 3 | 13.7 ms, 13.8 ms, 13.8 ms | 21.6 s, 22.2 s, 21.5 s |
+| `thread.episode-after-1000` | 21.2 µs | 42.9 ms | 2022.56× | 2016.81× | 3 of 3 | 21.2 µs, 21.4 µs, 21.2 µs | 42.8 ms, 43.6 ms, 42.9 ms |
+| `thread.to-json-1000x4` | 4.76 ms | 10.1 ms | 2.12× | 2.10× | 3 of 3 | 4.75 ms, 4.76 ms, 4.79 ms | 10.1 ms, 10.1 ms, 10.1 ms |
+| `thread.dumps-only-1000x4` | 3.08 ms | 6.02 ms | 1.95× | 1.93× | 3 of 3 | 3.1 ms, 3.03 ms, 3.08 ms | 5.97 ms, 6.06 ms, 6.02 ms |
+| `thread.from-data-1000x4` | 13.2 ms | 56.4 ms | 4.25× | 4.16× | 3 of 3 | 13.2 ms, 13.2 ms, 13.4 ms | 56.4 ms, 56.5 ms, 56 ms |
 
 ## Earlier figures
 

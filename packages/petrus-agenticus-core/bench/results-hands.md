@@ -1,6 +1,6 @@
 # Hands benchmark results (`agenticus-hands`)
 
-<!-- scripts/bench: measured sources 6dfbc2563f96dee2 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 58b8b899b48a81e2 at 13f7a84d2779 -->
 
 Twins: `bench/Bench/Hands.hs` (Haskell, tasty-bench) and
 `bench/python_hands.py` (upstream reference).
@@ -20,8 +20,8 @@ the barrier and commits.  `parse-5-methods` times `parseToolRequest` /
 
 ## Current figures
 
-Measured on 2026-10-12, 03:07–03:16 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.18–2.54:
+Measured on 2026-10-12, 22:18–22:26 local (UTC-3), at commit `424aa4e`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 1.80–2.65:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-agenticus-core 3 --python python_catalog.py --python python_effect.py --python python_hands.py --python python_thread.py
@@ -34,13 +34,13 @@ Haskell (above 1 means Haskell is faster). The same three repetitions measured t
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `hands.parse-5-methods` | 7.22 µs | 25.8 µs | 3.57× | 3.53× | 7.22 µs, 7.34 µs, 7.13 µs | 25.6 µs, 25.9 µs, 25.8 µs |
-| `hands.gateway-read-10k-1-caller` | 32.8 ms | 100 ms | 3.06× | 3.02× | 32.8 ms, 33.1 ms, 32.6 ms | 99.1 ms, 101 ms, 100 ms |
-| `hands.gateway-read-10k-8-callers` | 35.9 ms | 102 ms | 2.84× | 2.78× | 35.9 ms, 35.9 ms, 35.9 ms | 99.9 ms, 102 ms, 104 ms |
-| `hands.gateway-write-10k-1-caller` | 70.8 ms | 130 ms | 1.84× | 1.82× | 71.2 ms, 70.8 ms, 70.4 ms | 130 ms, 129 ms, 133 ms |
-| `hands.gateway-write-10k-8-callers` | 73.5 ms | 131 ms | 1.78× | 1.74× | 75.2 ms, 73.5 ms, 73.3 ms | 131 ms, 131 ms, 132 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `hands.parse-5-methods` | 6.45 µs | 26.1 µs | 4.05× | 4.01× | 3 of 3 | 6.45 µs, 6.47 µs, 6.44 µs | 26.4 µs, 25.9 µs, 26.1 µs |
+| `hands.gateway-read-10k-1-caller` | 28.8 ms | 99.2 ms | 3.45× | 3.42× | 3 of 3 | 29.1 ms, 28.8 ms, 28.8 ms | 99.3 ms, 98.9 ms, 99.2 ms |
+| `hands.gateway-read-10k-8-callers` | 30.9 ms | 101 ms | 3.25× | 3.19× | 3 of 3 | 30.9 ms, 31 ms, 30.8 ms | 101 ms, 99 ms, 101 ms |
+| `hands.gateway-write-10k-1-caller` | 68.6 ms | 131 ms | 1.91× | 1.88× | 3 of 3 | 68.1 ms, 68.6 ms, 69.8 ms | 134 ms, 130 ms, 131 ms |
+| `hands.gateway-write-10k-8-callers` | 71.4 ms | 131 ms | 1.84× | 1.82× | 3 of 3 | 70.6 ms, 71.4 ms, 71.5 ms | 131 ms, 130 ms, 132 ms |
 
 ## Results
 
