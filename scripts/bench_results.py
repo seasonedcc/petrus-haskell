@@ -185,12 +185,19 @@ def provenance(path: Path) -> str:
     return text + (f", carried to {carries[-1][1][:7]}" if carries else "")
 
 
+def prose(relative: str) -> bool:
+    """Whether a file (path relative to its package) is prose: *.md, LICENSE,
+    NOTICE."""
+    return relative.endswith(".md") or relative in ("LICENSE", "NOTICE")
+
+
 def counted(package: str, relative: str) -> bool:
     """Whether a file of the package (path relative to it) is one of the
-    sources its benchmark measures: everything but prose (*.md, LICENSE,
-    NOTICE) and the tests (test/, differential/, upstream-tests/)."""
-    return not (relative.endswith(".md") or relative in ("LICENSE", "NOTICE")
-                or relative.startswith(("test/", "differential/", "upstream-tests/")))
+    sources its benchmark measures: everything but prose (`prose`) and the
+    tests (test/, differential/, upstream-tests/), except where a benchmark
+    stanza compiles from those too (`benchmark_source_dirs`, added by
+    `sources_fingerprint`)."""
+    return not (prose(relative) or relative.startswith(("test/", "differential/", "upstream-tests/")))
 
 
 # Outside the packages, what every benchmark's figures depend on: the
@@ -256,14 +263,59 @@ def local_dependencies(package: str, treeish: str, packages: List[str]) -> List[
     return sorted(seen - {package})
 
 
+SOURCE_DIRS = re.compile(r"^(\s+)hs-source-dirs\s*:(.*)$", re.IGNORECASE)
+
+
+def benchmark_source_dirs(package: str, treeish: str) -> List[str]:
+    """The directories the package's benchmark stanzas compile from (their
+    hs-source-dirs, a value continued on more indented lines included), as
+    repository paths ending in "/": its bench/, and also its test/ or a
+    sibling's (`../petrus-engine/test`) where a benchmark builds on test
+    modules."""
+    cabal = next((path for path, _ in tree(treeish).get(package, [])
+                  if "/" not in path and path.endswith(".cabal")), None)
+    if cabal is None:
+        return []
+    found: List[str] = []
+    stanza = ""
+    field_indent: Optional[int] = None
+    for line in show(treeish, f"packages/{package}/{cabal}").splitlines():
+        if line and not line[0].isspace():
+            match = STANZA.match(line)
+            stanza = match.group(1).lower() if match else ""
+            field_indent = None
+            continue
+        indent = len(line) - len(line.lstrip())
+        if field_indent is not None and line.strip() and indent > field_indent and ":" not in line:
+            values = line
+        else:
+            field_indent = None
+            match = SOURCE_DIRS.match(line)
+            if stanza != "benchmark" or not match:
+                continue
+            field_indent = len(match.group(1))
+            values = match.group(2)
+        for value in values.replace(",", " ").split():
+            directory = os.path.normpath(f"packages/{package}/{value.strip(chr(34))}")
+            found.append(directory.rstrip("/") + "/")
+    return sorted(set(found))
+
+
 def sources_fingerprint(package: str, treeish: str = "HEAD") -> str:
     """A hash of what the package's figures measured, as committed at TREEISH
     (paths and git blob ids, so content, not timestamps): the package's
-    measured sources (`counted`), those of every local package it builds on
-    (`local_dependencies`, their benchmarks aside), and SHARED_SOURCES."""
+    measured sources (`counted`), every file but prose in the directories its
+    benchmark stanzas compile from (`benchmark_source_dirs`: its test/ or a
+    sibling's, where a benchmark builds on test modules), the measured
+    sources of every local package it builds on (`local_dependencies`, their
+    benchmarks aside), and SHARED_SOURCES."""
     files = tree(treeish)
     entries = [f"packages/{package}/{path}\0{blob}\n" for path, blob in files.get(package, [])
                if counted(package, path)]
+    compiled = tuple(benchmark_source_dirs(package, treeish))
+    for owner, owned in files.items():
+        entries += [f"packages/{owner}/{path}\0{blob}\n" for path, blob in owned
+                    if f"packages/{owner}/{path}".startswith(compiled) and not prose(path)]
     for dependency in local_dependencies(package, treeish, sorted(files)):
         entries += [f"packages/{dependency}/{path}\0{blob}\n" for path, blob in files.get(dependency, [])
                     if counted(dependency, path) and not path.startswith("bench/")]
@@ -273,7 +325,7 @@ def sources_fingerprint(package: str, treeish: str = "HEAD") -> str:
         if record:
             meta, path = record.split("\t", 1)
             entries.append(f"{path}\0{meta.split()[2]}\n")
-    return hashlib.sha256("".join(sorted(entries)).encode()).hexdigest()[:16]
+    return hashlib.sha256("".join(sorted(set(entries))).encode()).hexdigest()[:16]
 
 
 def stale_results() -> Dict[Path, str]:

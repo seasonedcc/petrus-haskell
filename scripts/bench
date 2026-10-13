@@ -39,10 +39,12 @@ Each results file also records which code its figures measured, in a marker
     <!-- scripts/bench: measured sources FINGERPRINT at COMMIT -->
 
 FINGERPRINT hashes, as committed (git blob ids), the package's files but its
-prose (``*.md``) and its tests (``test/``), the same files of every local
-package it builds on (its .cabal file's stanzas other than test suites name
-them, transitively; their benchmarks aside), ``cabal.project``, the freeze
-file, the pinned ``upstream/`` commits and ``scripts/bench_timing.py``
+prose (``*.md``) and its tests (``test/``), every file but prose in the
+directories its benchmark stanzas compile from (their ``hs-source-dirs``,
+such as its ``test/`` or ``../petrus-engine/test``), the same files of every
+local package it builds on (its .cabal file's stanzas other than test suites
+name them, transitively; their benchmarks aside), ``cabal.project``, the
+freeze file, the pinned ``upstream/`` commits and ``scripts/bench_timing.py``
 (scripts/bench_results.py, ``sources_fingerprint``). COMMIT is where they
 were. ``--check`` fails on a results file without the marker and lists, as
 ``STALE``, every results file whose fingerprint has changed since: its

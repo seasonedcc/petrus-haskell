@@ -391,11 +391,15 @@ Every results file records the code its figures measured, in a marker:
 
 FINGERPRINT hashes, as committed (git blob ids, so content): the package's
 files but its prose (`*.md`, LICENSE, NOTICE) and its tests (`test/`,
-`differential/`, `upstream-tests/`); the same files of every local package
-it builds on (the packages its .cabal file's stanzas other than test suites
-name, transitively; their benchmarks aside); `cabal.project` and its freeze
-file; the pinned `upstream/` commits; and `scripts/bench_timing.py`. COMMIT
-is the commit those sources were at. `summary.md` shows each file's commit.
+`differential/`, `upstream-tests/`); every file but prose in each directory
+its benchmark stanzas compile from (their `hs-source-dirs`: a benchmark that
+builds on test modules lists its `test/`, or a sibling's such as
+`../petrus-engine/test`, and those count); the same files of every local
+package it builds on (the packages its .cabal file's stanzas other than
+test suites name, transitively; their benchmarks aside); `cabal.project`
+and its freeze file; the pinned `upstream/` commits; and
+`scripts/bench_timing.py`. COMMIT is the commit those sources were at.
+`summary.md` shows each file's commit.
 
 - `scripts/bench --check` (CI's `lint` job, every push) fails on a results
   file without the marker, and lists as `STALE` (a warning, with a GitHub
