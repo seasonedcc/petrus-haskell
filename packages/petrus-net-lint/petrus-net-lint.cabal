@@ -36,10 +36,13 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Petrus.Net.Declared
+                    Petrus.Net.Files
                     Petrus.Net.Lint
   build-depends:    base >=4.18 && <5
                   , bytestring >=0.11
                   , containers >=0.6
+                  , directory >=1.3
+                  , filepath >=1.4
                   , petrus-cel
                   , petrus-impetus
                   , petrus-json
@@ -50,10 +53,6 @@ executable petrus-net-lint
   hs-source-dirs:   app
   main-is:          Main.hs
   build-depends:    base
-                  , bytestring
-                  , directory
-                  , filepath
-                  , petrus-impetus
                   , petrus-net-lint
                   , text
 

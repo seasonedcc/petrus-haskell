@@ -159,6 +159,12 @@ declarationMistakes declared s =
        , let t = T.drop 1 key
        , t `notElem` s.transitions || not (runsActivity s t)
        ]
+    <> [ Finding "declaration" key ("the scenario " <> scenario.name <> " delivers to " <> key <> ", which is neither a source transition nor declared ingress")
+       | scenario <- declared.scenarios
+       , key <- Map.keys scenario.deliver
+       , key `notElem` declared.ingress
+       , not (key `elem` s.transitions && deliveredOnly s key)
+       ]
   where
     named =
       [("initial marking", Map.keys declared.initial), ("ingress", declared.ingress), ("final places", declared.finalPlaces)]

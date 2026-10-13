@@ -43,7 +43,8 @@ places may fill both, or choose one. So the author declares each transition's ou
   "ingress": [],
   "final_places": [],
   "final_markings": [{"key-ring": 1}],
-  "laws": [{"name": "the key ring", "weights": {"key-ring": 1, "destroying": 1, "@revoke": 1}, "total": 1}] }
+  "laws": [{"name": "the key ring", "weights": {"key-ring": 1, "destroying": 1, "@revoke": 1}, "total": 1}],
+  "scenarios": [{"name": "two requests", "deliver": {"request": 2}}] }
 ```
 
 - `initial` is how many tokens each place starts with.
@@ -52,9 +53,10 @@ places may fill both, or choose one. So the author declares each transition's ou
   its arc's weight.
 - `ingress` are places a caller fills from outside the net, such as an inbox.
 - `final_places` are places a token may rest in for good.
-- `final_markings` and `laws` are for behavioral checks: the markings the net may stop in, and the
-  weighted sums of tokens every reachable marking keeps. A law counts an Activity's firings in
-  flight as `@transition`.
+- `final_markings`, `laws` and `scenarios` are for behavioral checks, such as `petrus-net-check`:
+  the markings the net may come to rest in, the weighted sums of tokens every reachable marking
+  keeps, and small runs, each saying how many times a caller delivers to each source transition
+  or ingress place. A law counts an Activity's firings in flight as `@transition`.
 
 Every member but `v` may be left out, and a member the lint doesn't know is refused, so a
 misspelled one isn't quietly ignored.
@@ -71,7 +73,7 @@ misspelled one isn't quietly ignored.
 | `counted-resource` | A field that an inline CEL guard or filter compares with `<`, `<=`, `>=` or `>`. Symbol guards and filters are code the lint can't read. |
 | `lonely-place` | A place nothing fills, or nothing empties. A place is filled by a transition, by the initial marking, or by a caller as declared `ingress`. A declared final place needn't be emptied, and neither does a standing fact that a read or inhibitor arc checks. |
 | `checked-once` | A read or inhibitor arc on a transition that runs an Activity. The engine checks it only when the transition fires, never while the Activity runs, so it is no lock. Take a token to hold one, or check again where the outcome joins. |
-| `declaration` | A declaration naming a place or transition the net doesn't have. |
+| `declaration` | A declaration naming a place or transition the net doesn't have, or a scenario delivering to something that is neither a source nor ingress. |
 
 ## Waivers
 

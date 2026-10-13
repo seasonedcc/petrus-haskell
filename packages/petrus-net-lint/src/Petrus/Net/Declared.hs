@@ -16,10 +16,13 @@
 -- >   "ingress": [],
 -- >   "final_places": [],
 -- >   "final_markings": [{"key-ring": 1}],
--- >   "laws": [{"name": "the key ring", "weights": {"key-ring": 1, "destroying": 1, "@revoke": 1}, "total": 1}] }
+-- >   "laws": [{"name": "the key ring", "weights": {"key-ring": 1, "destroying": 1, "@revoke": 1}, "total": 1}],
+-- >   "scenarios": [{"name": "two requests", "deliver": {"request": 2}}] }
 --
 -- A transition with a @failure@ outcome runs an Activity, and a law may
--- count its firings in flight as @\@name@. A transition with no declared
+-- count its firings in flight as @\@name@. A scenario says how many times a
+-- caller delivers to each source transition or ingress place, for the
+-- behavioral checks. A transition with no declared
 -- outcomes fills every output place once per firing, by its arcs' weights.
 -- Every member but @v@ may be left out.
 --
@@ -30,6 +33,7 @@ module Petrus.Net.Declared
   , Outcome (..)
   , When (..)
   , Law (..)
+  , Scenario (..)
   , noDeclarations
   , parseDeclared
   , Waiver (..)
@@ -66,6 +70,14 @@ data Law = Law
   }
   deriving stock (Eq, Show)
 
+-- | A small run for the behavioral checks: how many times a caller
+-- delivers to each source transition or ingress place.
+data Scenario = Scenario
+  { name :: Text
+  , deliver :: Map Text Int
+  }
+  deriving stock (Eq, Show)
+
 data Declared = Declared
   { initial :: Map Text Int
   -- ^ How many tokens each place starts with.
@@ -77,12 +89,13 @@ data Declared = Declared
   , finalMarkings :: [Map Text Int]
   -- ^ The markings the net may stop in, with every other place empty.
   , laws :: [Law]
+  , scenarios :: [Scenario]
   }
   deriving stock (Eq, Show)
 
 -- | A net that declares nothing.
 noDeclarations :: Declared
-noDeclarations = Declared {initial = Map.empty, outcomes = Map.empty, ingress = [], finalPlaces = [], finalMarkings = [], laws = []}
+noDeclarations = Declared {initial = Map.empty, outcomes = Map.empty, ingress = [], finalPlaces = [], finalMarkings = [], laws = [], scenarios = []}
 
 data Waiver = Waiver
   { rule :: Text
@@ -95,14 +108,15 @@ data Waiver = Waiver
 -- | Read @NET.declared.json@.
 parseDeclared :: ByteString -> Either Text Declared
 parseDeclared bytes = do
-  members <- document "a net's declarations" ["v", "initial", "outcomes", "ingress", "final_places", "final_markings", "laws"] bytes
+  members <- document "a net's declarations" ["v", "initial", "outcomes", "ingress", "final_places", "final_markings", "laws", "scenarios"] bytes
   initial <- maybe (Right Map.empty) (counts "initial") (lookup "initial" members)
   outcomes <- maybe (Right Map.empty) outcomesOf (lookup "outcomes" members)
   ingress <- maybe (Right []) (texts "ingress") (lookup "ingress" members)
   finalPlaces <- maybe (Right []) (texts "final_places") (lookup "final_places" members)
   finalMarkings <- maybe (Right []) (list "final_markings" (counts "a final marking")) (lookup "final_markings" members)
   laws <- maybe (Right []) (list "laws" lawOf) (lookup "laws" members)
-  pure Declared {initial, outcomes, ingress, finalPlaces, finalMarkings, laws}
+  scenarios <- maybe (Right []) (list "scenarios" scenarioOf) (lookup "scenarios" members)
+  pure Declared {initial, outcomes, ingress, finalPlaces, finalMarkings, laws, scenarios}
   where
     outcomesOf = \case
       Object byTransition -> Map.fromList <$> forM byTransition (\(transition, value) -> (transition,) <$> list ("the outcomes of " <> transition) (outcomeOf transition) value)
@@ -125,6 +139,11 @@ parseDeclared bytes = do
         Just (Int n) -> Right (fromInteger n)
         _ -> Left ("the law " <> name <> " has no whole \"total\"")
       pure Law {name, weights, total}
+    scenarioOf value = do
+      members <- object "a scenario" ["name", "deliver"] value
+      name <- text "name" members
+      deliver <- maybe (Right Map.empty) (counts ("what " <> name <> " delivers")) (lookup "deliver" members)
+      pure Scenario {name, deliver}
 
 -- | Read @NET.waivers.json@.
 parseWaivers :: ByteString -> Either Text [Waiver]

@@ -161,8 +161,8 @@ spec = describe "the net lint" $ do
       `shouldBe` [("single-token-s-net", "net"), ("no-concurrency", "net"), ("stale-waiver", "item"), ("stale-waiver", "build")]
 
   it "refuses declarations that name what the net doesn't have" $
-    rulesOf (lint mutex mutexDeclared {ingress = ["outbox"], initial = Map.fromList [("lock", 1), ("keys", 2)], outcomes = Map.fromList [("release", [outcome "released" OnSuccess [("done", 1), ("waiting", 1)]]), ("nothing", [])]} [])
-      `shouldBe` [("declaration", "nothing"), ("declaration", "release"), ("declaration", "keys"), ("declaration", "outbox")]
+    rulesOf (lint mutex mutexDeclared {scenarios = [Scenario "one" (Map.fromList [("arrive", 1), ("release", 1)])], ingress = ["outbox"], initial = Map.fromList [("lock", 1), ("keys", 2)], outcomes = Map.fromList [("release", [outcome "released" OnSuccess [("done", 1), ("waiting", 1)]]), ("nothing", [])]} [])
+      `shouldBe` [("declaration", "nothing"), ("declaration", "release"), ("declaration", "keys"), ("declaration", "outbox"), ("declaration", "release")]
 
   it "reads the declarations and the waivers, and refuses a member it doesn't know" $ do
     parseDeclared declaredFile `shouldBe` Right expected
@@ -179,7 +179,8 @@ spec = describe "the net lint" $ do
       \ \"outcomes\": {\"revoke\": [{\"name\": \"recorded\", \"when\": \"success\", \"puts\": {\"destroying\": 1}},\
       \ {\"name\": \"failed\", \"when\": \"failure\", \"puts\": {\"key-ring\": 1}}]},\
       \ \"final_places\": [\"done\"], \"final_markings\": [{\"key-ring\": 1}],\
-      \ \"laws\": [{\"name\": \"the key ring\", \"weights\": {\"key-ring\": 1, \"@revoke\": 1}, \"total\": 1}]}"
+      \ \"laws\": [{\"name\": \"the key ring\", \"weights\": {\"key-ring\": 1, \"@revoke\": 1}, \"total\": 1}],\
+      \ \"scenarios\": [{\"name\": \"two\", \"deliver\": {\"request\": 2}}]}"
     expected =
       Declared
         { initial = Map.fromList [("key-ring", 1)]
@@ -188,4 +189,5 @@ spec = describe "the net lint" $ do
         , finalPlaces = ["done"]
         , finalMarkings = [Map.fromList [("key-ring", 1)]]
         , laws = [Law {name = "the key ring", weights = Map.fromList [("key-ring", 1), ("@revoke", 1)], total = 1}]
+        , scenarios = [Scenario {name = "two", deliver = Map.fromList [("request", 2)]}]
         }
