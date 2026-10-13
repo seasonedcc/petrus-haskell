@@ -1,17 +1,17 @@
 # petrus-dst benchmark results
 
-<!-- scripts/bench: measured sources 446ad304837fb049 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 0c320d9ec82bdc34 at 43c9546d3143 -->
 
 The same workloads, measured on the same inputs, in Haskell (`bench/Bench.hs`, tasty-bench)
 and in the pinned Python reference (`scripts/bench.py`, `timeit`).
 
 ## Current figures
 
-Measured on 2026-10-12, 01:40–01:53 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.29–3.14:
-five interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-12, 22:44–22:53 local (UTC-3), at commit `f82d998`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 3.07–4.12:
+three interleaved repetitions, alternating which side goes first, of
 
-    scripts/bench-compare petrus-dst 5 \
+    scripts/bench-compare petrus-dst 3 \
         --map 'engine.replay the Engine-world fixtures=engine/replay 18 Engine-world fixtures' \
         --map 'engine.author the Engine worlds=engine/author 18 Engine worlds' \
         --map 'joined.one isolated database (create, both schemas, drop)=joined/one isolated database' \
@@ -27,31 +27,46 @@ Haskell (above 1 means Haskell is faster). The server was `scripts/with-postgres
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `codec.decode+encode 51 fixtures` | 8.4 ms | 29.3 ms | 3.48× | 3.44× | 8.4 ms, 8.44 ms, 8.35 ms, 8.36 ms, 8.4 ms | 29.5 ms, 29.1 ms, 29.3 ms, 29.3 ms, 28.9 ms |
-| `codec.encode 51 fixtures` | 4.49 ms | 10.5 ms | 2.34× | 2.28× | 4.49 ms, 4.49 ms, 4.45 ms, 4.48 ms, 4.58 ms | 10.6 ms, 10.5 ms, 10.5 ms, 10.5 ms, 10.4 ms |
-| `digest_json largest fixture` | 189 µs | 533 µs | 2.81× | 2.78× | 192 µs, 189 µs, 187 µs, 190 µs, 187 µs | 532 µs, 533 µs, 532 µs, 534 µs, 533 µs |
-| `1000 workload draws` | 1.16 ms | 1.77 ms | 1.52× | 1.49× | 1.18 ms, 1.16 ms, 1.15 ms, 1.18 ms, 1.16 ms | 1.76 ms, 1.77 ms, 1.77 ms, 1.77 ms, 1.76 ms |
-| `author+replay 400 generated scripts` | 81.2 ms | 226 ms | 2.78× | 2.69× | 81.2 ms, 83.9 ms, 81 ms, 81.2 ms, 80.8 ms | 226 ms, 226 ms, 225 ms, 225 ms, 227 ms |
-| `fold queue-story progress` | 127 µs | 512 µs | 4.03× | 3.96× | 127 µs, 127 µs, 130 µs, 127 µs, 126 µs | 515 µs, 509 µs, 513 µs, 512 µs, 511 µs |
-| `engine.replay the Engine-world fixtures` | 29.7 ms | 89.3 ms | 3.01× | 2.94× | 30.4 ms, 29.7 ms, 29.8 ms, 29.5 ms, 29.7 ms | 89.4 ms, 89.6 ms, 88.9 ms, 89.3 ms, 89.1 ms |
-| `engine.author the Engine worlds` | 36.6 ms | 125 ms | 3.42× | 3.40× | 36.2 ms, 36.8 ms, 36.2 ms, 36.7 ms, 36.6 ms | 125 ms, 125 ms, 125 ms, 126 ms, 127 ms |
-| `joined.replay the 33 joined fixtures` | 3.35 s | 3.69 s | 1.10× | 1.09× | 3.32 s, 3.39 s, 3.34 s, 3.35 s, 3.38 s | 3.63 s, 3.69 s, 3.73 s, 3.67 s, 3.72 s |
-| `joined.author the 33 joined worlds` | 3.36 s | 3.74 s | 1.11× | 1.09× | 3.34 s, 3.41 s, 3.36 s, 3.36 s, 3.36 s | 3.74 s, 3.7 s, 3.72 s, 3.75 s, 3.74 s |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `codec.decode+encode 51 fixtures` | 6.53 ms | 29.5 ms | 4.52× | 4.46× | 3 of 3 | 6.39 ms, 6.57 ms, 6.53 ms | 29.6 ms, 29.3 ms, 29.5 ms |
+| `codec.encode 51 fixtures` | 2.21 ms | 10.6 ms | 4.83× | 4.77× | 3 of 3 | 2.21 ms, 2.21 ms, 2.2 ms | 10.7 ms, 10.5 ms, 10.6 ms |
+| `digest_json largest fixture` | 86.2 µs | 537 µs | 6.23× | 6.19× | 3 of 3 | 85.9 µs, 86.2 µs, 86.4 µs | 537 µs, 540 µs, 535 µs |
+| `1000 workload draws` | 1.18 ms | 1.78 ms | 1.51× | 1.49× | 3 of 3 | 1.17 ms, 1.18 ms, 1.19 ms | 1.79 ms, 1.78 ms, 1.77 ms |
+| `author+replay 400 generated scripts` | 67.5 ms | 226 ms | 3.34× | 3.32× | 3 of 3 | 67.5 ms, 67.1 ms, 67.7 ms | 227 ms, 226 ms, 225 ms |
+| `fold queue-story progress` | 102 µs | 515 µs | 5.05× | 4.96× | 3 of 3 | 101 µs, 104 µs, 102 µs | 516 µs, 514 µs, 515 µs |
+| `engine.replay the Engine-world fixtures` | 29.5 ms | 90.5 ms | 3.07× | 3.02× | 3 of 3 | 30 ms, 28.7 ms, 29.5 ms | 90.5 ms, 91.6 ms, 89.9 ms |
+| `engine.author the Engine worlds` | 32 ms | 126 ms | 3.95× | 3.87× | 3 of 3 | 32.6 ms, 31.9 ms, 32 ms | 126 ms, 129 ms, 126 ms |
+| `joined.replay the 33 joined fixtures` | 3.87 s | 4.26 s | 1.10× | 1.08× | 5 of 5 | 3.87 s, 3.82 s, 3.87 s, 3.95 s, 3.9 s | 4.24 s, 4.29 s, 4.26 s, 4.26 s, 4.31 s |
+| `joined.author the 33 joined worlds` | 3.83 s | 4.23 s | 1.10× | 1.08× | 5 of 5 | 3.8 s, 3.81 s, 3.83 s, 3.84 s, 3.84 s | 4.18 s, 4.29 s, 4.13 s, 4.64 s, 4.23 s |
 
 The isolated-database row is the server's work on both sides: `CREATE
 DATABASE` (a copy of `template1`), the two schemas and `DROP DATABASE ...
-WITH (FORCE)`, over three connections. In the five repetitions above it
-read 0.99× (55.3 ms against 54.6 ms, 0.95× at the lowest). Its own run, 15
-interleaved repetitions on 2026-10-12, 04:52–04:55 local, load average
+WITH (FORCE)`, over three connections. The joined rows read under 1.15×
+after the three repetitions above, so they got two more, 22:56–22:59
+local, load average 2.90–5.37, of
+
+    scripts/bench-compare petrus-dst 2 --pattern joined \
+        --map 'joined.one isolated database (create, both schemas, drop)=joined/one isolated database' \
+        --map 'joined.replay the 33 joined fixtures=joined/replay 33 joined fixtures' \
+        --map 'joined.author the 33 joined worlds=joined/author 33 joined worlds' \
+        --twin '(cd upstream/petrus && PYTHONPATH=. "$(../../scripts/upstream-python)" -B ../../packages/petrus-dst/scripts/bench.py joined/)'
+
+and the replay and authoring lines above pool all five. Over the same five
+the isolated database reads 0.97× (65.2 ms against 63.0 ms, Haskell ahead
+in 2 of 5, 0.90× at the lowest; Haskell 62.0–68.2 ms, Python 61.2–63.5 ms),
+the one row of this package under 1.0×. It was not investigated further:
+the statements are the same on both sides and the time is the server's, and
+at `81bbdc5`, in the five-repetition run then, it read 0.99× (55.3 ms
+against 54.6 ms, 0.95× at the lowest). That commit's run of the row alone,
+15 interleaved repetitions on 2026-10-12, 04:52–04:55 local, load average
 1.86–2.75, of
 
     scripts/bench-compare petrus-dst 15 --pattern isolated \
         --map 'joined.one isolated database (create, both schemas, drop)=joined/one isolated database' \
         --twin '(cd upstream/petrus && PYTHONPATH=. "$(../../scripts/upstream-python)" -B ../../packages/petrus-dst/scripts/bench.py "joined/one isolated")'
 
-puts the two sides level: 53.3 ms against 53.1 ms, Haskell ahead in 9 of
+put the two sides level: 53.3 ms against 53.1 ms, Haskell ahead in 9 of
 the 15 repetitions, the per-repetition ratios spread from 0.90× to 1.08×
 around a median of 1.01×.
 

@@ -36,7 +36,7 @@ lists the files whose package sources have changed since.
 | `petrus-agenticus-runtime` | [results-pi.md](../packages/petrus-agenticus-runtime/bench/results-pi.md) | `9c6cdb8` | 11 | 1.05× | 5.97× |  |
 | `petrus-cel` | [RESULTS.md](../packages/petrus-cel/bench/RESULTS.md) | `4b2f7e6` | 21 | 9.95× | 337× |  |
 | `petrus-dsl` | [RESULTS.md](../packages/petrus-dsl/bench/RESULTS.md) | `f82d998` | 10 | 2.33× | 11.3× |  |
-| `petrus-dst` | [RESULTS.md](../packages/petrus-dst/bench/RESULTS.md) | `5a73d7a` | 11 | 1.00× | 6.23× |  |
+| `petrus-dst` | [RESULTS.md](../packages/petrus-dst/bench/RESULTS.md) | `43c9546` | 11 | 1.00× | 6.23× |  |
 | `petrus-engine` | [RESULTS.md](../packages/petrus-engine/bench/RESULTS.md) | `5a73d7a` | 5 | 5.58× | 12.7× |  |
 | `petrus-engine-absurd` | [RESULTS.md](../packages/petrus-engine-absurd/bench/RESULTS.md) | `5a73d7a` | 2 | 1.15× | 1.29× |  |
 | `petrus-engine-file` | [RESULTS.md](../packages/petrus-engine-file/bench/RESULTS.md) | `5a73d7a` | 19 | 1.24× | 6.22× |  |
