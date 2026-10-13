@@ -1,6 +1,6 @@
 # fileVersion 2 benchmarks: Haskell vs petrus-engine
 
-<!-- scripts/bench: measured sources 9403c1e47485dfc2 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources fc866794e24395b7 at f6aeabc89de1 -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` time the same steps
 on the same input texts. `bench/process_bench.py` times the format command
@@ -67,8 +67,8 @@ table is one Haskell run and the Python run that followed it.
 
 ## Current figures
 
-Measured on 2026-10-12, 03:32–03:34 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 1.53–2.27:
+Measured on 2026-10-12, 23:02–23:05 local (UTC-3), at commit `f6aeabc`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.84–3.96:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-engine-file 3 --twin '"$(scripts/upstream-python petrus-engine)" -B packages/petrus-engine-file/bench/python_bench.py'
@@ -81,23 +81,23 @@ Haskell (above 1 means Haskell is faster). The earlier figures below were taken 
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `chain-10.parse` | 19.8 µs | 47 µs | 2.38× | 2.37× | 19.6 µs, 19.8 µs, 19.8 µs | 47 µs, 47 µs, 47 µs |
-| `chain-10.to_json` | 46.9 µs | 292 µs | 6.22× | 6.22× | 45.7 µs, 46.9 µs, 46.9 µs | 292 µs, 292 µs, 292 µs |
-| `chain-10.format` | 70.1 µs | 348 µs | 4.97× | 4.90× | 67.9 µs, 71.2 µs, 70.1 µs | 348 µs, 349 µs, 348 µs |
-| `chain-10.load` | 66.1 µs | 171 µs | 2.59× | 2.56× | 64.5 µs, 66.1 µs, 66.9 µs | 171 µs, 170 µs, 171 µs |
-| `chain-1000.parse` | 3.44 ms | 4.95 ms | 1.44× | 1.42× | 3.33 ms, 3.45 ms, 3.44 ms | 4.95 ms, 4.9 ms, 5.01 ms |
-| `chain-1000.to_json` | 7.08 ms | 26.2 ms | 3.70× | 3.69× | 6.99 ms, 7.11 ms, 7.08 ms | 26.2 ms, 26.3 ms, 26.1 ms |
-| `chain-1000.format` | 11 ms | 32.6 ms | 2.97× | 2.95× | 10.9 ms, 11 ms, 11.1 ms | 32.9 ms, 32.5 ms, 32.6 ms |
-| `chain-1000.load` | 11.6 ms | 16.7 ms | 1.43× | 1.41× | 11.3 ms, 11.6 ms, 11.8 ms | 16.9 ms, 16.6 ms, 16.7 ms |
-| `chain-10000.parse` | 57.9 ms | 77.5 ms | 1.34× | 1.32× | 57 ms, 58 ms, 57.9 ms | 77.5 ms, 77.5 ms, 76.5 ms |
-| `chain-10000.to_json` | 94.9 ms | 288 ms | 3.03× | 2.93× | 97.8 ms, 93.8 ms, 94.9 ms | 286 ms, 289 ms, 288 ms |
-| `chain-10000.format` | 182 ms | 387 ms | 2.12× | 2.07× | 182 ms, 182 ms, 186 ms | 386 ms, 391 ms, 387 ms |
-| `chain-10000.load` | 192 ms | 255 ms | 1.33× | 1.31× | 192 ms, 192 ms, 192 ms | 258 ms, 252 ms, 255 ms |
-| `mounted-10.load` | 1.12 ms | 2.08 ms | 1.86× | 1.84× | 1.11 ms, 1.12 ms, 1.12 ms | 2.04 ms, 2.08 ms, 2.08 ms |
-| `mounted-100.load` | 15.3 ms | 21.4 ms | 1.40× | 1.39× | 15 ms, 15.4 ms, 15.3 ms | 21.5 ms, 21.4 ms, 21.3 ms |
-| `mounted-1000.load` | 215 ms | 267 ms | 1.24× | 1.23× | 213 ms, 215 ms, 217 ms | 267 ms, 269 ms, 267 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `chain-10.parse` | 17.8 µs | 48 µs | 2.70× | 2.64× | 3 of 3 | 17.9 µs, 17.8 µs, 17.3 µs | 48 µs, 47 µs, 48 µs |
+| `chain-10.to_json` | 32.8 µs | 292 µs | 8.90× | 8.63× | 3 of 3 | 34.1 µs, 32.8 µs, 32.3 µs | 294 µs, 288 µs, 292 µs |
+| `chain-10.format` | 51.7 µs | 351 µs | 6.79× | 6.67× | 3 of 3 | 51.7 µs, 51.9 µs, 50.6 µs | 351 µs, 346 µs, 355 µs |
+| `chain-10.load` | 65.2 µs | 176 µs | 2.70× | 2.58× | 3 of 3 | 65.2 µs, 65.2 µs, 64.2 µs | 176 µs, 168 µs, 176 µs |
+| `chain-1000.parse` | 3.99 ms | 5.17 ms | 1.29× | 1.24× | 3 of 3 | 4.17 ms, 3.99 ms, 3.84 ms | 5.17 ms, 5 ms, 5.17 ms |
+| `chain-1000.to_json` | 8.74 ms | 26.5 ms | 3.04× | 2.71× | 3 of 3 | 9.79 ms, 8.53 ms, 8.74 ms | 26.5 ms, 26.5 ms, 27.1 ms |
+| `chain-1000.format` | 13.5 ms | 33.6 ms | 2.49× | 2.38× | 3 of 3 | 13.8 ms, 12.4 ms, 13.5 ms | 32.9 ms, 33.8 ms, 33.6 ms |
+| `chain-1000.load` | 12.8 ms | 17.6 ms | 1.37× | 1.33× | 3 of 3 | 13.5 ms, 12.6 ms, 12.8 ms | 18 ms, 16.9 ms, 17.6 ms |
+| `chain-10000.parse` | 59 ms | 84.6 ms | 1.43× | 1.38× | 3 of 3 | 61.2 ms, 57.6 ms, 59 ms | 84.6 ms, 85.1 ms, 84.3 ms |
+| `chain-10000.to_json` | 114 ms | 291 ms | 2.56× | 2.43× | 3 of 3 | 114 ms, 105 ms, 119 ms | 302 ms, 291 ms, 290 ms |
+| `chain-10000.format` | 165 ms | 408 ms | 2.48× | 2.34× | 3 of 3 | 175 ms, 154 ms, 165 ms | 408 ms, 408 ms, 415 ms |
+| `chain-10000.load` | 179 ms | 268 ms | 1.50× | 1.43× | 3 of 3 | 178 ms, 179 ms, 188 ms | 270 ms, 265 ms, 268 ms |
+| `mounted-10.load` | 1.17 ms | 2.1 ms | 1.80× | 1.80× | 3 of 3 | 1.17 ms, 1.1 ms, 1.17 ms | 2.1 ms, 2.05 ms, 2.14 ms |
+| `mounted-100.load` | 16.2 ms | 21.8 ms | 1.35× | 1.28× | 3 of 3 | 16.2 ms, 15.7 ms, 16.9 ms | 22.6 ms, 21.8 ms, 21.6 ms |
+| `mounted-1000.load` | 208 ms | 292 ms | 1.40× | 1.37× | 3 of 3 | 216 ms, 199 ms, 208 ms | 297 ms, 286 ms, 292 ms |
 
 ## Results
 
