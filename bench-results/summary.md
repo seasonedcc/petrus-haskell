@@ -59,7 +59,7 @@ lists the files whose package sources have changed since.
 | `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | `ba2323d` | 12 | 1.51× | 17.1× |  |
 | `petrus-simulation` | [RESULTS.md](../packages/petrus-simulation/bench/RESULTS.md) | `e506718` | 17 | 1.71× | 40.6× |  |
 | `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | `7d1b80c` | 7 | 1.03× | 1.86× |  |
-| `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | `5a73d7a` | 4 | 2.00× | 7.00× |  |
+| `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | `d85b420` | 4 | 2.50× | 9.00× |  |
 | `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | `37bf668` | 58 | 1.03× | 31.3× |  |
 
 46 results files; none with a row below 1.0×.
