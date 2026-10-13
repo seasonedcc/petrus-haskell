@@ -28,7 +28,7 @@ and refuses a count it cannot read. The
 documents do not state how many Haskell examples a suite runs, since that
 number changes with every test added (`scripts/lint-example-counts` rejects
 one). `cabal test <package>` prints it, and every CI run prints each
-suite's count in its `ci` job and records it in the `test-ledger` artifact.
+suite's count in its `test` jobs.
 
 ## petrus
 

@@ -15,8 +15,8 @@ run-name: ${{ inputs.sha && format('CI for {0}', inputs.sha) || '' }}
 #   build      cabal build all (-Werror), incrementally from the latest cached
 #              dist-newstyle (from none on a full run), re-planned from the
 #              .cabal files' content (.github/actions/cabal-dist); then
-#              scripts/ci-tests plan decides which test suites run and
-#              spreads them over the test shards
+#              scripts/ci-tests plan spreads every test suite over the test
+#              shards
 #   checks     scripts/interop --check against the build; scripts/check-corpora
 #   test (N)   cabal test for the suites of shard N, with PostgreSQL 17, then
 #              scripts/check-pending on their output
@@ -31,15 +31,11 @@ run-name: ${{ inputs.sha && format('CI for {0}', inputs.sha) || '' }}
 #              repetitions; fails when Haskell did not win most of a row's
 #              repetitions (scripts/bench-gate)
 #   container  the image and its runtime contract (scripts/container-smoke)
-#   ci         the verdict: green only when every job above is; it also
-#              records this run's test ledger
+#   ci         the verdict: green only when every job above is
 #
-# A suite is reused instead of rerun only when its input hash (its package,
-# every local package it depends on or names, everything outside packages/
-# but prose and benchmark records, and the toolchain and runner image) equals
-# the hash of a run where it passed (scripts/ci-tests explains the hash). A
-# dispatch with `full` builds from an empty dist-newstyle and reruns
-# everything.
+# Every run runs every test suite. Only the build is incremental: cabal
+# rebuilds what changed since the cached dist-newstyle. A dispatch with
+# `full` builds from an empty dist-newstyle instead (and adds bench-smoke).
 # docs/reproducing.md, "Continuous integration", has the details.
 
 on:
@@ -49,7 +45,7 @@ on:
   workflow_dispatch:
     inputs:
       full:
-        description: Rerun every test suite (reuse no earlier result)
+        description: Build from an empty dist-newstyle, and smoke-run every benchmark (bench-smoke)
         type: boolean
         default: false
       sha:
@@ -71,7 +67,6 @@ concurrency:
 
 permissions:
   contents: read
-  actions: read
 
 env:
   GHC_VERSION: "9.10.3"
@@ -81,8 +76,7 @@ env:
   CABAL_DIR: /home/runner/.cabal
   PETRUS_POSTGRES_IMAGE: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
   DIST_KEY_PREFIX: dist-v1-Linux-ghc-9.10.3-
-  # A `full` dispatch builds from an empty dist-newstyle and reuses no test
-  # result.
+  # A `full` dispatch builds from an empty dist-newstyle.
   FULL_RUN: ${{ inputs.full && 'true' || 'false' }}
   # The dist-newstyle the build job saves and the later jobs restore; a full
   # run has a key of its own, so that its later jobs never restore an
@@ -118,7 +112,6 @@ jobs:
     runs-on: blacksmith-16vcpu-ubuntu-2404
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
-      viewer: ${{ steps.plan.outputs.viewer }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -151,18 +144,11 @@ jobs:
         with:
           path: dist-newstyle
           key: ${{ env.DIST_KEY }}
-      - name: Earlier test ledgers
-        if: env.FULL_RUN != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: scripts/ci-tests fetch-ledgers "$RUNNER_TEMP/ledgers"
       - name: Plan the test shards
         id: plan
         run: |
-          scripts/ci-tests plan --out plan.json --ledgers "$RUNNER_TEMP/ledgers" \
-            ${{ env.FULL_RUN == 'true' && '--full' || '' }}
+          scripts/ci-tests plan --out plan.json
           echo "shards=$(python3 -c 'import json; print(json.dumps(json.load(open("plan.json"))["shards"]))')" >> "$GITHUB_OUTPUT"
-          echo "viewer=$(python3 -c 'import json; print(str(json.load(open("plan.json"))["viewer"]).lower())')" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: test-plan
@@ -206,7 +192,6 @@ jobs:
 
   test:
     needs: build
-    if: needs.build.outputs.shards != '[]'
     name: test (${{ matrix.name }})
     runs-on: blacksmith-8vcpu-ubuntu-2404
     strategy:
@@ -247,16 +232,9 @@ jobs:
         run: scripts/ci-tests run-shard plan.json "${{ matrix.name }}" --logs "$RUNNER_TEMP/test-logs"
       - name: No pending examples (a missing tool or server fails; only the opt-ins in scripts/check-pending may pend)
         run: scripts/check-pending "$RUNNER_TEMP/test-logs"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results-${{ matrix.name }}-${{ github.run_attempt }}
-          path: results-*.json
-          retention-days: 30
 
   viewer:
     needs: build
-    if: needs.build.outputs.viewer == 'true'
     runs-on: blacksmith-8vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
@@ -269,9 +247,6 @@ jobs:
         with:
           key: ${{ env.DIST_KEY }}
           fail-on-cache-miss: "true"
-      - uses: actions/download-artifact@v4
-        with:
-          name: test-plan
       # pnpm goes into the toolchain's Node directory, already on PATH: a
       # PATH unlike the build job's would make cabal reconfigure.
       - name: pnpm
@@ -300,7 +275,7 @@ jobs:
       - name: Upstream Python environment
         run: scripts/upstream-python petrus >/dev/null
       - name: The upstream petrus-viewer suites against the Haskell backend
-        run: scripts/ci-tests run-viewer plan.json
+        run: scripts/ci-tests run-viewer
       - name: The MCP golden transcript (re-recorded through the upstream Node MCP server)
         run: node packages/petrus-viewer-server/test/record-mcp-transcript.mjs --check
       # scripts/bench-gate's viewer rows, here because this job has the
@@ -308,12 +283,6 @@ jobs:
       - name: The viewer backend against the upstream Node backend (scripts/bench-gate)
         if: inputs.bench
         run: scripts/bench-gate petrus-viewer-server --json bench-gate-viewer.json
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results-viewer-${{ github.run_attempt }}
-          path: results-*.json
-          retention-days: 30
       - uses: actions/upload-artifact@v4
         if: always() && inputs.bench
         with:
@@ -492,36 +461,9 @@ jobs:
     if: always()
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.sha }}
-      - uses: actions/download-artifact@v4
-        if: needs.build.result == 'success'
-        with:
-          name: test-plan
-      - uses: actions/download-artifact@v4
-        if: needs.build.result == 'success'
-        with:
-          pattern: test-results-*
-          path: results
-      - name: This run's test ledger
-        id: ledger
-        if: needs.build.result == 'success'
-        env:
-          CI_SHA: ${{ inputs.sha || github.sha }}
-        run: scripts/ci-tests ledger --plan plan.json --results results --out ledger.json
-        continue-on-error: true
-      - uses: actions/upload-artifact@v4
-        if: needs.build.result == 'success'
-        with:
-          name: test-ledger
-          path: ledger.json
-          retention-days: 30
-          overwrite: true
       - name: Verdict
         env:
           RESULTS: ${{ toJSON(needs) }}
-          LEDGER: ${{ steps.ledger.outcome }}
         run: |
           python3 - <<'EOF'
           import json, os, sys
@@ -529,11 +471,9 @@ jobs:
           ok = True
           for job, data in needs.items():
               result = data["result"]
-              allowed = ("success", "skipped") if job in ("test", "viewer", "bench-smoke", "bench-gate") else ("success",)
+              # Only the opt-in jobs of a dispatch (`full`, `bench`) may be skipped.
+              allowed = ("success", "skipped") if job in ("bench-smoke", "bench-gate") else ("success",)
               print(f"{job}: {result}")
               ok = ok and result in allowed
-          if os.environ["LEDGER"] != "success":
-              print("ledger: a suite that was to run did not pass")
-              ok = False
           sys.exit(0 if ok else 1)
           EOF

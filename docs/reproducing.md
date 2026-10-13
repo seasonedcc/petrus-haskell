@@ -169,9 +169,8 @@ It runs, in order, and stops at the first failing step:
     the script cannot read fails too, so none goes unchecked. No document states how
     many Haskell examples a suite has (`scripts/lint-example-counts`): such a
     number goes stale with the next test. `cabal test` prints each suite's
-    count, and CI's `ci` job prints every suite's and records it in the
-    run's `test-ledger` artifact. It warns (`STALE evidence`) about
-    components whose cited results are stale.
+    count, and CI's `test` jobs print every suite's. It warns
+    (`STALE evidence`) about components whose cited results are stale.
 15. `packages/petrus-engine/scripts/parity_check.py`: the runtime test
     ledgers account for every in-scope upstream test.
 
@@ -577,7 +576,8 @@ legitimately needs one says so with `-- lint-skips: allow <reason>`.
 and on demand (`workflow_dispatch`, with a `full` input, a `bench` input,
 and a `sha` input that tests that commit instead of the branch's
 tip). It runs the steps of `scripts/check-all --viewer`, plus the container
-job, spread over Blacksmith runners so that they run side by side:
+job, spread over Blacksmith runners so that they run side by side. Every
+run runs every test suite; only the build is incremental (see Caches):
 
 | CI job | Runner | `scripts/check-all` step |
 | --- | --- | --- |
@@ -594,7 +594,7 @@ job, spread over Blacksmith runners so that they run side by side:
 Every push to `main` gets a complete run of its tip, which holds every
 change the push brought. An earlier commit of the same push can be
 checked on its own with `gh workflow run ci.yml -f sha=<commit>` (the
-`sha` input checks out, builds, tests and records that commit). On `main`, each run has its own concurrency group, so a
+`sha` input checks out, builds and tests that commit). On `main`, each run has its own concurrency group, so a
 newer push neither cancels it nor replaces it while it waits. On a branch or pull request a newer push
 cancels the older run. `main` has no branch protection rule: commits land on
 it without waiting for CI, and the run of each commit, red or green, is what
@@ -609,13 +609,12 @@ than the opt-in benchmarks) has no CI step of that name: a check added to
 versions. The cabal store and package index are cached by `cabal.project`,
 `cabal.project.freeze` and the `.cabal` files, falling back to the latest
 entry. `dist-newstyle` is cached by commit, falling back to the latest
-entry, so `build` recompiles only what changed since. A dispatch with
-`full` restores no `dist-newstyle` and builds every package from scratch
-(under a cache key of its own, so its later jobs never restore
-an incremental build). A branch or pull request reads its own entries and
-those of `main`. The test jobs and `checks` restore the `dist-newstyle` that
-`build` saved for the commit and build nothing. Every job prepares the
-restored `dist-newstyle` the same way, in one composite action
+entry, so `build` recompiles only what changed since. That is all a run
+takes from an earlier one: no test result is ever carried over. A branch or
+pull request reads its own entries and those of `main`. The test jobs and
+`checks` restore the `dist-newstyle` that `build` saved for the commit and
+build nothing. Every job prepares the restored `dist-newstyle` the same
+way, in one composite action
 (`.github/actions/cabal-dist`):
 
 - CI's test flags (`--test-show-details=direct`, the
@@ -649,35 +648,17 @@ binaries (`scripts/ci-tests check-parts`, hspec dry runs): each part
 selects an example, and the parts' counts add up to the suite's. A suite passes only when all its parts pass. Stale
 times only unbalance the jobs.
 
-**Reusing results.** Each run's `ci` job uploads a test ledger: for every
-suite known green at that commit, its input hash and the run where it
-passed. `build` reads the ledgers of the latest runs on the same branch and
-on `main`, and a suite is not run again when its input hash equals one in
-those ledgers. The hash covers, as committed: every file of the suite's
-package, of every local package it depends on (any component, transitively,
-from cabal's plan) and of every local package its files name or lead into
-by a relative path (`hs-source-dirs: ../petrus-engine/test`, a fixture read
-as `../../petrus-json/test/...`); every file
-outside `packages/` (the cabal project and freeze file, `scripts/`, the
-submodule pins, `spec/`, `deployment/`, `.github/`, ...) except README.md,
-PARITY.md, SCOPE.md, `docs/` and `bench-results/`; and the toolchain and
-runner image (GHC, cabal, uv, Node, Python and Docker versions, the system
-libraries). `scripts/ci-tests inputs` prints each suite's hash and the
-packages it covers. The `build` log and the run summary list every reused
-suite with the run it comes from. The scan for other packages is a
-heuristic: a path built at run time that neither names the package nor
-climbs out with `../` (an environment variable, say) escapes it, so such a
-dependency must be spelled out as a path or a package name in a committed
-file of the package that reads it. A dispatch with `full` reuses
-nothing and runs every suite, so a missed edge surfaces in the next one:
+**A build from scratch.** A dispatch with `full` restores no
+`dist-newstyle` and builds every package from scratch (under a cache key of
+its own, so its later jobs never restore an incremental build), and adds
+the `bench-smoke` job:
 
 ```sh
 gh workflow run CI --ref main -f full=true
 ```
 
 When a `test` job fails on a flaky test, rerunning the failed jobs reruns
-only those shards; the ledger counts a part as passed when an attempt of the
-run passed it.
+only those shards, and the `ci` verdict after them.
 
 **Timings** (October 2026, wall clock from the first job's start to the
 `ci` verdict):
