@@ -63,4 +63,4 @@ test-suite petrus-net-check-test
                   , petrus-net-check
                   , petrus-net-lint
                   , text
-  ghc-options:      -threaded
+  ghc-options:      -threaded -rtsopts
