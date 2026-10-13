@@ -154,6 +154,6 @@ The Pi and Agent-as-a-Net probes stay declared opt-ins
 (`scripts/check-pending`). They need npm packages that no upstream lock
 pins (`@earendil-works/pi-coding-agent`, `pi-ai`, `pi-agent-core` 0.83.0),
 installed from the network, and Agent-as-a-Net needs a `node` of exactly
-v22.19.0. **TODO: no paid live run has been recorded.** The paid cells need
-the accounts, the credentials and the Gondolin image. Their record belongs
-in that document.
+v22.19.0. **Status: no paid live run is recorded.** The paid cells are
+opt-in: they need the accounts, the credentials and the Gondolin image, and
+a run, when one is made, is recorded in that document.

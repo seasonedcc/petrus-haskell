@@ -97,6 +97,10 @@ run use `MVar`s where upstream uses `threading.Event`.
 
 ## Spec conformance: `spec/simulation-http-v1.md`
 
+[spec/simulation-http-conformance.md](../../spec/simulation-http-conformance.md)
+maps every obligation of the profile to the example that checks it, and
+lists the gaps.
+
 These are points the profile states and the upstream tests leave implicit:
 
 - `/v1/simulation-profile` serves the exact profile fixture, with

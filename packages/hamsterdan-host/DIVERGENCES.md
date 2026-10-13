@@ -117,6 +117,15 @@ Below are the differences that remain, with their rationale.
   `self_caused_head` keyword (empty when it is not passed). It defaults to
   `noReconcileHook`, which changes nothing. The hamsterdan-testing journeys
   use it.
+- **`HostService.hooks` (`ServiceHooks`) is a test seam.** Upstream tests
+  monkeypatch a running service's methods (`_record_posture`,
+  `project_pending`, `run_due` and `worker`, among others) and restore
+  them between sweeps of the same service. Haskell records cannot be patched, so the service keeps
+  a mutable `hooks` field: `around` hooks receive the real action, and an
+  `Override` replaces the method when set. `openHostService` installs
+  `defaultServiceHooks`, which run the real methods; only test code (the
+  test suites and hamsterdan-testing's world, see its
+  [DIVERGENCES](../hamsterdan-testing/DIVERGENCES.md)) writes them.
 
 - **Stores are closed when the application fails to construct.**
   `openApplication` closes the stores it had already opened when a later

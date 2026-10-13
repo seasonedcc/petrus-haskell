@@ -16,8 +16,9 @@ number. `scripts/check-parity` checks what they may claim from the results:
 a component at parity cites no results file with a row below 1.0×.
 
 This script reads every tracked `PARITY.md` and `DIVERGENCES.md`, and the
-split ledgers under a `parity/` or `divergences/` directory, outside
-`upstream/` and `docs/audit/` (the audits are dated records), and rejects a
+split ledgers named `parity-*.md` or under a `parity/` or `divergences/`
+directory, outside `upstream/` and `docs/audit/` (the audits are dated
+records), and rejects a
 ratio figure: a number followed by `×` (`2.3×`, `1.39–1.88×`) or a decimal
 number followed by `x` (`1.23x`). A product such as `4 × 64 KiB` (the sign
 followed by a number) and `×3` multiplicities are not ratios. There is no
@@ -35,7 +36,7 @@ from typing import List
 
 ROOT = Path(__file__).resolve().parent.parent
 RATIO = re.compile(r"(?<![\w.\-])\d[\d,]*(?:\.\d+)?\s?×(?!\s*\d)|(?<![\w.\-])\d[\d,]*\.\d+\s?x(?!\w)")
-LEDGER = re.compile(r"(^|/)(PARITY|DIVERGENCES)\.md$|(^|/)(parity|divergences)/[^/]+\.md$")
+LEDGER = re.compile(r"(^|/)(PARITY|DIVERGENCES)\.md$|(^|/)(parity|divergences)/[^/]+\.md$|(^|/)parity-[^/]+\.md$")
 
 
 def documents() -> List[Path]:

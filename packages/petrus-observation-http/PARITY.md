@@ -28,6 +28,10 @@ functions are the 19 cases pytest collects.
 
 ## Spec conformance: `spec/observation-protocol-v1.md` (HTTP transport profile)
 
+[spec/observation-conformance.md](../../spec/observation-conformance.md)
+maps every obligation of the protocol, the HTTP profile included, to the
+example that checks it, and lists the gaps.
+
 `UpstreamSpec.profileSpec` checks what the profile states and the upstream
 tests leave implicit:
 

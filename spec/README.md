@@ -32,6 +32,11 @@ checklist names the check for every obligation.
   of upstream's six core documents (`net-schema.md`, `firing-semantics.md`,
   `event-history.md`, `handler-contract.md`, `net-definition-v3.md`,
   `net-document-v1.md`), each mapped to the check that verifies it.
+- [observation-conformance.md](observation-conformance.md): the same for
+  upstream's `observation-protocol-v1.md` (producer contract, snapshot,
+  History pages, HTTP profile).
+- [simulation-http-conformance.md](simulation-http-conformance.md): the same
+  for upstream's `simulation-http-v1.md`.
 
 The two specifications are self-contained enough to read alone; processes.md
 reuses fabric.md's value model, canonical JSON and error categories by
