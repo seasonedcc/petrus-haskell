@@ -1,0 +1,66 @@
+cabal-version:      3.4
+name:               petrus-net-check
+version:            0.1.0.0
+synopsis:           Explores every marking of a Petri net's skeleton
+description:
+  "Petrus.Net.Check" abstracts a Petrus net to its skeleton, a count of
+  tokens in each place, with each firing putting one of the outcomes its
+  author declares, and Activities in flight between their start and end.
+  For each small scenario the author declares, it explores every reachable
+  marking, and checks that each declared law keeps its total, that the net
+  never stops where it may not rest, and that it can always come to rest.
+  It lists the net's P-invariants too.
+license:            Apache-2.0
+license-file:       LICENSE
+copyright:          2026 Seasoned
+author:             Seasoned
+maintainer:         danielweinmann@avatarnaturalfoods.com
+category:           Control
+build-type:         Simple
+extra-doc-files:    README.md
+
+common warnings
+  ghc-options:        -Wall -Wcompat -Widentities -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints
+                      -Werror
+  default-language:   GHC2024
+  default-extensions: OverloadedStrings
+                      LambdaCase
+                      StrictData
+                      DuplicateRecordFields
+                      OverloadedRecordDot
+                      NoFieldSelectors
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Petrus.Net.Check
+  build-depends:    base >=4.18 && <5
+                  , containers >=0.6
+                  , petrus-impetus
+                  , petrus-net-lint
+                  , text >=2.0
+
+executable petrus-net-check
+  import:           warnings
+  hs-source-dirs:   app
+  main-is:          Main.hs
+  build-depends:    base
+                  , petrus-net-check
+                  , petrus-net-lint
+                  , text
+
+test-suite petrus-net-check-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    CheckSpec
+  build-depends:    base
+                  , containers
+                  , hspec >=2.10
+                  , petrus-impetus
+                  , petrus-net-check
+                  , petrus-net-lint
+                  , text
+  ghc-options:      -threaded -rtsopts
