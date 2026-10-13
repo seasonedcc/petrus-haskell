@@ -1,6 +1,6 @@
 # petrus-motus-absurd benchmarks
 
-<!-- scripts/bench: measured sources 051f55fd711276a1 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 8e72756f73239cc8 at 679f2e606e7a -->
 
 The Haskell side is [`bench/Main.hs`](Main.hs). The Python twin is
 [`bench/python_bench.py`](python_bench.py), which runs the reference's
@@ -12,8 +12,8 @@ prepared-statement cache), and 3.5× on the pure wire row.
 
 ## Current figures
 
-Measured on 2026-10-12, 02:27–02:30 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.15–3.64:
+Measured on 2026-10-12, 23:11–23:14 local (UTC-3), at commit `10b5172`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 4.06–4.82:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-motus-absurd 3
@@ -26,12 +26,12 @@ Haskell (above 1 means Haskell is faster). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `wire.encode-decode` | 993 ns | 3.46 µs | 3.48× | 3.43× | 984 ns, 993 ns, 1.01 µs | 3.45 µs, 3.48 µs, 3.46 µs |
-| `calibration.select-1` | 17.7 µs | 25.8 µs | 1.45× | 1.43× | 17.7 µs, 17.3 µs, 17.8 µs | 26.3 µs, 25.8 µs, 25.5 µs |
-| `dispatch.spawn-commit` | 256 µs | 336 µs | 1.31× | 1.29× | 250 µs, 256 µs, 261 µs | 334 µs, 336 µs, 336 µs |
-| `roundtrip.dispatch-claim-complete-collect` | 1.39 ms | 1.61 ms | 1.16× | 1.16× | 1.39 ms, 1.39 ms, 1.38 ms | 1.62 ms, 1.61 ms, 1.61 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `wire.encode-decode` | 968 ns | 3.47 µs | 3.59× | 3.42× | 3 of 3 | 1.01 µs, 968 ns, 956 ns | 3.45 µs, 3.47 µs, 3.48 µs |
+| `calibration.select-1` | 17.7 µs | 24.9 µs | 1.40× | 1.39× | 3 of 3 | 17.7 µs, 17.7 µs, 17.9 µs | 24.7 µs, 24.9 µs, 25 µs |
+| `dispatch.spawn-commit` | 275 µs | 352 µs | 1.28× | 1.25× | 3 of 3 | 267 µs, 275 µs, 277 µs | 352 µs, 356 µs, 346 µs |
+| `roundtrip.dispatch-claim-complete-collect` | 1.46 ms | 1.71 ms | 1.17× | 1.16× | 3 of 3 | 1.46 ms, 1.46 ms, 1.46 ms | 1.74 ms, 1.71 ms, 1.7 ms |
 
 ## Earlier figures
 
