@@ -1,6 +1,6 @@
 # petrus-simulation benchmarks
 
-<!-- scripts/bench: measured sources 50381bf76913dc3b at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources e555967bba1f7abe at 95e4f5c2a66c -->
 
 This compares the Haskell runner and service with upstream
 `petrus.simulation` and `petrus.simulation_http` at the pin in
@@ -9,8 +9,8 @@ Haskell is faster on every row.
 
 ## Current figures
 
-Measured on 2026-10-12, 02:44–02:52 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.57–2.89:
+Measured on 2026-10-12, 23:17–23:24 local (UTC-3), at commit `ba2323d`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 3.64–4.40:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-simulation 3
@@ -23,19 +23,19 @@ Haskell (above 1 means Haskell is faster). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `simulate.fixture-32` | 171 µs | 2.77 ms | 16.17× | 16.17× | 171 µs, 170 µs, 171 µs | 2.77 ms, 2.76 ms, 2.77 ms |
-| `simulate.loop-24x256` | 42 ms | 1.66 s | 39.65× | 39.10× | 42 ms, 42 ms, 42.7 ms | 1.66 s, 1.66 s, 1.67 s |
-| `simulate.loop-512x256-oversized` | 670 ms | 6.51 s | 9.72× | 9.62× | 675 ms, 670 ms, 668 ms | 6.49 s, 6.53 s, 6.51 s |
-| `simulate.scan-480x16` | 152 ms | 960 ms | 6.33× | 6.29× | 152 ms, 152 ms, 151 ms | 955 ms, 960 ms, 962 ms |
-| `simulate.payload-990k-rest` | 10.6 ms | 184 ms | 17.33× | 17.27× | 10.6 ms, 10.7 ms, 10.6 ms | 186 ms, 184 ms, 184 ms |
-| `simulate.payload-400k-fire` | 12 ms | 225 ms | 18.81× | 18.52× | 11.9 ms, 12 ms, 12 ms | 225 ms, 226 ms, 222 ms |
-| `simulate.refused-scan-bound` | 98.9 µs | 1.37 ms | 13.88× | 13.68× | 99.6 µs, 98.7 µs, 98.9 µs | 1.36 ms, 1.38 ms, 1.37 ms |
-| `http.profile` | 69.9 µs | 118 µs | 1.68× | 1.66× | 69.9 µs, 69.5 µs, 70.8 µs | 118 µs, 118 µs, 117 µs |
-| `http.options` | 67.8 µs | 121 µs | 1.79× | 1.76× | 67.8 µs, 70.5 µs, 67.6 µs | 121 µs, 124 µs, 121 µs |
-| `http.invalid-400` | 67.9 µs | 135 µs | 1.99× | 1.97× | 69.4 µs, 66.6 µs, 67.9 µs | 137 µs, 135 µs, 134 µs |
-| `http.simulate-fixture-32` | 259 µs | 3.06 ms | 11.84× | 11.17× | 259 µs, 274 µs, 258 µs | 3.06 ms, 3.06 ms, 3.09 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `simulate.fixture-32` | 160 µs | 2.78 ms | 17.35× | 17.22× | 3 of 3 | 160 µs, 160 µs, 162 µs | 2.78 ms, 2.82 ms, 2.78 ms |
+| `simulate.loop-24x256` | 41.2 ms | 1.67 s | 40.65× | 39.75× | 3 of 3 | 41.9 ms, 40.8 ms, 41.2 ms | 1.66 s, 1.68 s, 1.67 s |
+| `simulate.loop-512x256-oversized` | 708 ms | 6.64 s | 9.39× | 9.18× | 3 of 3 | 708 ms, 717 ms, 692 ms | 6.65 s, 6.59 s, 6.64 s |
+| `simulate.scan-480x16` | 159 ms | 959 ms | 6.04× | 5.73× | 3 of 3 | 159 ms, 167 ms, 156 ms | 979 ms, 957 ms, 959 ms |
+| `simulate.payload-990k-rest` | 10.6 ms | 185 ms | 17.56× | 17.44× | 3 of 3 | 10.5 ms, 10.6 ms, 10.6 ms | 187 ms, 185 ms, 185 ms |
+| `simulate.payload-400k-fire` | 11.9 ms | 223 ms | 18.81× | 18.58× | 3 of 3 | 11.9 ms, 11.9 ms, 11.9 ms | 223 ms, 220 ms, 226 ms |
+| `simulate.refused-scan-bound` | 96.7 µs | 1.39 ms | 14.33× | 14.22× | 3 of 3 | 97.5 µs, 95.2 µs, 96.7 µs | 1.39 ms, 1.37 ms, 1.39 ms |
+| `http.profile` | 71.2 µs | 128 µs | 1.79× | 1.68× | 3 of 3 | 72.4 µs, 71.2 µs, 69.5 µs | 128 µs, 120 µs, 129 µs |
+| `http.options` | 71.8 µs | 123 µs | 1.71× | 1.68× | 3 of 3 | 70.4 µs, 71.8 µs, 72.8 µs | 123 µs, 123 µs, 122 µs |
+| `http.invalid-400` | 76.1 µs | 145 µs | 1.91× | 1.88× | 3 of 3 | 77.3 µs, 74.1 µs, 76.1 µs | 145 µs, 141 µs, 151 µs |
+| `http.simulate-fixture-32` | 269 µs | 3.1 ms | 11.52× | 11.40× | 3 of 3 | 269 µs, 272 µs, 258 µs | 3.14 ms, 3.1 ms, 3.06 ms |
 
 ## Earlier figures
 
