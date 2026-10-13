@@ -1,6 +1,7 @@
 # hamsterdan-github benchmarks
 
 <!-- scripts/bench: measured sources 349f5a5cb0cf091a at df073f3106e5 -->
+<!-- scripts/bench: carried to eeb491cc93f0f4f3 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: its Auth module uses Hamsterdan.PyLiteral's renamed constructors (PyNone..PyDict to LitNone..LitDict), names only; Hamsterdan.Python.Value.truthy is petrus-json's pythonTruthy, the same seven equations; hamsterdan-contracts' Codec Literal int-against-float test calls pyNumberEq, the same exact test it spelled out; Hamsterdan.Sqlite gains a comment only; petrus-sqlite's checkBindLength names the either throwIO pure . bindLength its bind loop already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 These are the paths the GitHub boundary runs on every delivery and every
 provider call:

@@ -1,6 +1,7 @@
 # hamsterdan-contracts benchmarks
 
 <!-- scripts/bench: measured sources 3888921f1d3b5af4 at df073f3106e5 -->
+<!-- scripts/bench: carried to 2ace458e0b741478 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: Hamsterdan.Python.Value.truthy is petrus-json's pythonTruthy, the same seven equations; Codec's Literal int-against-float test calls pyNumberEq, the same exact test it spelled out; Hamsterdan.PyLiteral's constructors are renamed (PyNone..PyDict to LitNone..LitDict), names only; Hamsterdan.Sqlite gains a comment only; petrus-sqlite's checkBindLength names the either throwIO pure . bindLength its bind loop already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 These are the hot paths Hamsterdan runs on every token:
 

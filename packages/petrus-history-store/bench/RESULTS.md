@@ -1,6 +1,6 @@
 # History store benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources 29bd26c2a9c70b22 at 25c66fa944b2 -->
+<!-- scripts/bench: measured sources 766a1238477868a8 at f87d05b6f42b -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` build the same
 History: 20 002 records from a drained 4 000-token FIFO. They time the same
@@ -53,9 +53,10 @@ got more rounds.
 
 ## Current figures
 
-Measured on 2026-10-12, 19:58–20:11 local (UTC-3), at commit `c550dcb`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.07–3.86:
-five interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-13, 05:25–05:38 local (UTC-3), at commit `f87d05b`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.91–3.80 and
+no build running: five interleaved repetitions, alternating which side
+goes first, of
 
     scripts/bench-compare petrus-history-store 5
 
@@ -68,6 +69,49 @@ faster). "Haskell ahead" counts the repetitions Haskell was faster in. The
 rows without a Python figure are Haskell-only (described under the first
 table below). The tables in the sections below are earlier measurements,
 kept with the analysis that came with them.
+
+Haskell was ahead in every repetition of every row with a Python twin. The
+closest is `sqlite.append-per-record`, 1.18× (lowest repetition 1.07×):
+2 000 `fsync`ed commits, with the same system calls on both sides (see the
+`c550dcb` figures below), so it follows the device's time per sync, as
+petrus-sqlite's transaction rows do. It read 1.13× at `c550dcb`, and 0.98×
+over five repetitions at `df073f3` (2026-10-13, Haskell ahead in 3 of 5,
+1.07× over the first three); it is level within the device's noise, and
+this run has it ahead. Since `c550dcb` the packages under this one changed
+(petrus-json, petrus-posix, petrus-sqlite and petrus-impetus), and so did
+this package's `floatEqualsInteger`, now petrus-json's `pyNumberEq`, which
+no row reaches (positions and occurrences are stored as integers). The
+Haskell loads, resumes and diagnostic rows read 4–7% slower than at
+`c550dcb`, the Python loads and resumes about 1%; `diagnostic.encode-payload`
+is among them (21.3 against 19.9 ms), and its code, petrus-json's encoder,
+has not changed since, which points at the machine rather than the code.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `sqlite.append-per-record` | 89 ms | 105 ms | 1.18× | 1.07× | 5 of 5 | 89 ms, 91.4 ms, 86 ms, 91.5 ms, 88 ms | 95.4 ms, 105 ms, 107 ms, 110 ms, 103 ms |
+| `jsonl.append-one-batch` | 24.3 ms | 65.6 ms | 2.70× | 2.17× | 5 of 5 | 24.3 ms, 22.9 ms, 23.9 ms, 24.3 ms, 30.3 ms | 68.9 ms, 61.3 ms, 69.7 ms, 64.2 ms, 65.6 ms |
+| `jsonl.append-per-record` | 48.6 ms | 67.3 ms | 1.38× | 1.31× | 5 of 5 | 52.9 ms, 47.5 ms, 49.1 ms, 48.6 ms, 47.8 ms | 69.2 ms, 63.6 ms, 68.1 ms, 67.3 ms, 66.7 ms |
+| `jsonl.load` | 28.4 ms | 96 ms | 3.38× | 3.36× | 5 of 5 | 28.4 ms, 27.4 ms, 27.3 ms, 28.8 ms, 28.9 ms | 95.5 ms, 93.5 ms, 96 ms, 97.1 ms, 97.5 ms |
+| `jsonl.resume` | 385 ms | 7.2 s | 18.69× | 18.35× | 5 of 5 | 385 ms, 372 ms, 389 ms, 381 ms, 387 ms | 7.2 s, 7.09 s, 7.2 s, 7.22 s, 7.1 s |
+| `sqlite.append-one-batch` | 72.1 ms | 138 ms | 1.91× | 1.88× | 5 of 5 | 68.2 ms, 72.1 ms, 73.5 ms, 72.8 ms, 71.4 ms | 134 ms, 138 ms, 142 ms, 144 ms, 134 ms |
+| `sqlite.append-batches-of-8` | 30.7 ms | 46.4 ms | 1.51× | 1.33× | 5 of 5 | 29 ms, 29.9 ms, 32 ms, 30.7 ms, 31.1 ms | 38.6 ms, 46.4 ms, 47.1 ms, 49.4 ms, 41.9 ms |
+| `sqlite.load` | 44.9 ms | 106 ms | 2.36× | 2.29× | 5 of 5 | 46.4 ms, 44.9 ms, 43.6 ms, 45.5 ms, 42.5 ms | 106 ms, 104 ms, 109 ms, 108 ms, 106 ms |
+| `sqlite.resume` | 400 ms | 7.23 s | 18.07× | 17.79× | 5 of 5 | 387 ms, 398 ms, 406 ms, 400 ms, 406 ms | 7.21 s, 7.12 s, 7.25 s, 7.26 s, 7.23 s |
+| `sqlite.terminal-resend-ack` | 6.84 ms | 1.16 s | 170.28× | 169.27× | 5 of 5 | 6.84 ms, 6.58 ms, 6.84 ms, 6.86 ms, 6.67 ms | 1.16 s, 1.16 s, 1.32 s, 1.16 s, 1.18 s |
+| `diagnostic.encode-payload` | 21.3 ms | — | — | — | — | 21.3 ms, 22.3 ms, 21.1 ms, 22.1 ms, 19.9 ms |  |
+| `diagnostic.decode-lines` | 28.7 ms | — | — | — | — | 28.7 ms, 28.5 ms, 28.8 ms, 28.7 ms, 27.6 ms |  |
+| `store.in-memory-append` | 252 µs | 424 µs | 1.68× | 1.63× | 5 of 5 | 258 µs, 249 µs, 252 µs, 255 µs, 246 µs | 421 µs, 422 µs, 424 µs, 430 µs, 428 µs |
+| `store.in-memory-records` | 3.82 ns | 44.9 µs | 11732.67× | 9441.90× | 5 of 5 | 3.85 ns, 3.89 ns, 3.82 ns, 3.82 ns, 3.61 ns | 38.1 µs, 36.7 µs, 44.9 µs, 46.5 µs, 44.9 µs |
+| `store.jsonl-records` | 3.67 ns | 44.4 µs | 12099.02× | 11166.93× | 5 of 5 | 3.67 ns, 3.8 ns, 3.49 ns, 3.69 ns, 3.34 ns | 44.4 µs, 42.5 µs, 44.1 µs, 46.1 µs, 44.7 µs |
+| `store.in-memory-iterate` | 23 µs | 210 µs | 9.13× | 8.90× | 5 of 5 | 23.4 µs, 23 µs, 23 µs, 23 µs, 22.9 µs | 209 µs, 211 µs, 210 µs, 210 µs, 211 µs |
+| `store.in-memory-records-list` | 36.4 µs | — | — | — | — | 36.4 µs, 36.8 µs, 35.5 µs, 36.4 µs, 34.6 µs |  |
+
+### The figures at `c550dcb` (2026-10-12, 19:58–20:11)
+
+<!-- bench: superseded -->
+
+Measured at a 1-minute load average of 2.07–3.86, by the same command and
+protocol as above.
 
 Haskell was ahead in every repetition of every row with a Python twin; the
 closest is `sqlite.append-per-record`, 1.13× (lowest repetition 1.10×).

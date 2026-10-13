@@ -1,6 +1,7 @@
 # petrus-agenticus-runtime benchmark results
 
 <!-- scripts/bench: measured sources 74c3be7661028153 at df073f3106e5 -->
+<!-- scripts/bench: carried to 18f6681461150a58 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: Claude's pyTruthy (its isError check) is petrus-json's pythonTruthy, the same seven equations, as are petrus-execution's Docker and Gondolin providers' local truthy; petrus-history-store's floatEqualsInteger calls pyNumberEq, the same exact test, reached only for a REAL position or a float occurrence, which the store never writes; petrus-impetus's literalInt float branch and petrus-motus's local-dispatch sqlite3 int-against-float == call pyNumberEq, the same exact test they spelled out; petrus-sqlite's checkBindLength names the either throwIO pure . bindLength its bind loop already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 The Pi benchmarks (frame codec, session validation, fingerprints, the
 operation ledger and a scripted A2 turn) are in [results-pi.md](results-pi.md).

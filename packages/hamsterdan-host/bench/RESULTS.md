@@ -1,6 +1,7 @@
 # hamsterdan-host benchmarks
 
 <!-- scripts/bench: measured sources 7af76648f9c8b73c at df073f3106e5 -->
+<!-- scripts/bench: carried to aa2a65429ab65901 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: hamsterdan-host's V5 Runtime, hamsterdan-readiness's Board, the GitHub Auth module and hamsterdan-agents' Pi and Validate use Hamsterdan.PyLiteral's renamed constructors (PyNone..PyDict to LitNone..LitDict), names only; Hamsterdan.Python.Value.truthy, petrus-agenticus-runtime's Claude pyTruthy and petrus-execution's Docker and Gondolin truthy are petrus-json's pythonTruthy, the same seven equations; hamsterdan-contracts' Codec Literal int-against-float test, petrus-impetus's literalInt float branch and petrus-motus's local-dispatch sqlite3 int-against-float == call pyNumberEq, the same exact test they spelled out; petrus-history-store's floatEqualsInteger calls it too, reached only for a REAL position or a float occurrence, which the store never writes; Hamsterdan.Sqlite gains a comment only; petrus-sqlite's checkBindLength names the either throwIO pure . bindLength its bind loop already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 These are the host's hot paths:
 

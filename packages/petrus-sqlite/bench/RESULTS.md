@@ -1,6 +1,7 @@
 # petrus-sqlite benchmarks
 
 <!-- scripts/bench: measured sources 39e2776408913fd1 at df073f3106e5 -->
+<!-- scripts/bench: carried to af009f4eb2abdfa7 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-sqlite's checkBindLength names the either throwIO pure . bindLength that bindAll and bindTextParam already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same

@@ -2,6 +2,7 @@
 
 <!-- scripts/bench: measured sources d96ae160a5a8769d at 4b2f7e6ecdef -->
 <!-- scripts/bench: carried to 231b13da2eee2ad0 at c33829edc562: Tz uses the shared normpath only in zone-key validation; the parse, evaluate and compile rows use no time zone -->
+<!-- scripts/bench: carried to 74fe1cab26c07661 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-impetus's literalInt float branch calls pyNumberEq, the same exact int/float test it spelled out; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 Typical Petrus CEL expressions, compiled and evaluated through the Impetus
 kernel seam: `Petrus.Cel.Impetus.celCompilers` in Haskell and

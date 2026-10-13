@@ -1,6 +1,7 @@
 # agenticus-custody benchmark results
 
 <!-- scripts/bench: measured sources 79b9a7598b6cb16d at df073f3106e5 -->
+<!-- scripts/bench: carried to 625ff0185edc3f57 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-sqlite's checkBindLength names the either throwIO pure . bindLength that bindAll and bindTextParam already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 These are twin workloads: `bench/Bench/Custody.hs` and
 `bench/python_custody.py`, which runs the pinned reference

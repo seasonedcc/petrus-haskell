@@ -2,6 +2,7 @@
 
 <!-- scripts/bench: measured sources 732d2ba448774b29 at b10764ebde7c -->
 <!-- scripts/bench: carried to 8a4e0f9189f363e5 at c33829edc562: Postgres-backed; the petrus-sqlite bind guard and the petrus-json/posix changes are off its measured path -->
+<!-- scripts/bench: carried to 4303de61517d04c6 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures come from `bench/Main.hs`, which uses the same names and

@@ -2,6 +2,7 @@
 
 <!-- scripts/bench: measured sources d19535d4acafe368 at 2eb0f2ab4a41 -->
 <!-- scripts/bench: carried to 62f31a27cada23bb at c33829edc562: additions only (linkAt, normpath, purePathParent, exitInt) and a C comment; no measured function changed -->
+<!-- scripts/bench: carried to d8e029bf131aca37 at f87d05b6f42b: since 50635f0 petrus-posix gains additions only (DirectFd, directFd, writeDirect and their imports in Petrus.Posix.File) and docs; no measured function changed -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same

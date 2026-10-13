@@ -2,6 +2,7 @@
 
 <!-- scripts/bench: measured sources 42d6d5c8600effbe at 0bf22350b52f -->
 <!-- scripts/bench: carried to 31f9601329428f10 at c33829edc562: in-memory and JSONL history; no SQLite bind or other changed code on the measured path -->
+<!-- scripts/bench: carried to 43adbf481a9b4134 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-history-store's floatEqualsInteger calls pyNumberEq, the same exact test, reached only for a REAL position or a float occurrence, which the store never writes; petrus-impetus's literalInt float branch and petrus-motus's local-dispatch sqlite3 int-against-float == call pyNumberEq, the same exact test they spelled out; petrus-sqlite's checkBindLength names the either throwIO pure . bindLength its bind loop already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` drive the same
 workloads end to end through the public Engine: `create`/`load`, `deliver`,

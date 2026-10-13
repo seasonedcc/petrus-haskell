@@ -1,6 +1,7 @@
 # fileVersion 2 benchmarks: Haskell vs petrus-engine
 
 <!-- scripts/bench: measured sources c915260f96bb147c at df073f3106e5 -->
+<!-- scripts/bench: carried to f0deb149ca054f66 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-impetus's literalInt float branch calls pyNumberEq, the same exact int/float test it spelled out; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` time the same steps
 on the same input texts. `bench/process_bench.py` times the format command

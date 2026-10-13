@@ -1,6 +1,7 @@
 # hamsterdan-export benchmarks
 
 <!-- scripts/bench: measured sources cee6eb0ca5216c2a at df073f3106e5 -->
+<!-- scripts/bench: carried to 978920e112e724e1 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: hamsterdan-readiness's Board and hamsterdan-export's Export use Hamsterdan.PyLiteral's renamed constructors (PyNone..PyDict to LitNone..LitDict), names only; Hamsterdan.Python.Value.truthy is petrus-json's pythonTruthy, the same seven equations; hamsterdan-contracts' Codec Literal int-against-float test and petrus-impetus's literalInt float branch call pyNumberEq, the same exact test they spelled out; Hamsterdan.Sqlite gains a comment only; petrus-sqlite's checkBindLength names the either throwIO pure . bindLength its bind loop already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 One export of pull request 7, from three state directories:
 

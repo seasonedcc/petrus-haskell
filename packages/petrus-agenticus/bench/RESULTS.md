@@ -1,6 +1,7 @@
 # petrus-agenticus benchmark results
 
 <!-- scripts/bench: measured sources 4de0a148dddf6fdc at df073f3106e5 -->
+<!-- scripts/bench: carried to fed78dc2e1165f54 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-execution's Docker and Gondolin providers' local truthy are petrus-json's pythonTruthy, the same seven equations; petrus-history-store's floatEqualsInteger calls pyNumberEq, the same exact test, reached only for a REAL position or a float occurrence, which the store never writes; petrus-impetus's literalInt float branch and petrus-motus's local-dispatch sqlite3 int-against-float == call pyNumberEq, the same exact test they spelled out; petrus-sqlite's checkBindLength names the either throwIO pure . bindLength its bind loop already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 These are twin workloads: `bench/Bench/AgentNet.hs` (tasty-bench) and
 `bench/python_agent_net.py`, which runs the pinned reference

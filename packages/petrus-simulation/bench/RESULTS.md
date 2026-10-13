@@ -2,6 +2,7 @@
 
 <!-- scripts/bench: measured sources e555967bba1f7abe at e506718a0833 -->
 <!-- scripts/bench: carried to 4772b430aa05ac5d at c33829edc562: in-package changes are tests and docs only; the upstream library changes (json refusal path, posix additions, SQLite bind guard) are off the measured snapshot and HTTP paths -->
+<!-- scripts/bench: carried to 5d35de949eddea5b at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-history-store's floatEqualsInteger calls pyNumberEq, the same exact test, reached only for a REAL position or a float occurrence, which the store never writes; petrus-impetus's literalInt float branch and petrus-motus's local-dispatch sqlite3 int-against-float == call pyNumberEq, the same exact test they spelled out; petrus-sqlite's checkBindLength names the either throwIO pure . bindLength its bind loop already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 This compares the Haskell runner and service with upstream
 `petrus.simulation` and `petrus.simulation_http` at the pin in

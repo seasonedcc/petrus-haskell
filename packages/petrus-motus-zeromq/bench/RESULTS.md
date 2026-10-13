@@ -1,6 +1,7 @@
 # ZeroMQ Dispatch transport benchmarks: Haskell vs the Python reference
 
 <!-- scripts/bench: measured sources 72602e5ff870a7dd at df073f3106e5 -->
+<!-- scripts/bench: carried to e0a83573c2d2205c at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-motus's local-dispatch sqlite3 value == for an int against a float calls pyNumberEq, the same exact test it spelled out; petrus-sqlite's checkBindLength names the either throwIO pure . bindLength its bind loop already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
 
 `bench/Main.hs` and `bench/python_bench.py` time the same workloads. On each
 side the client runs in the bench process and the server is a separate
