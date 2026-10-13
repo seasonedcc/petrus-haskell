@@ -1,6 +1,6 @@
 # petrus-simulation benchmarks
 
-<!-- scripts/bench: measured sources e555967bba1f7abe at 95e4f5c2a66c -->
+<!-- scripts/bench: measured sources e555967bba1f7abe at e506718a0833 -->
 
 This compares the Haskell runner and service with upstream
 `petrus.simulation` and `petrus.simulation_http` at the pin in
@@ -146,19 +146,21 @@ both sides.
 - **Repetitions.** Each repetition runs every scenario on both services,
   alternating which goes first, after a warm-up.
 
-The table gives the median over 5 repetitions of throughput and of the
-per-request p50 and p99 latencies, measured on 2026-10-12, 04:10–04:11
-local (UTC-3), at commit `81bbdc5`, with the 1-minute load average at 2.61
-to 2.85. An earlier run (load average 2.95 to 3.12) gave 1.64–8.13×.
+The table gives the median over 3 repetitions of throughput and of the
+per-request p50 and p99 latencies, measured on 2026-10-12, 23:24–23:25
+local (UTC-3), at commit `e506718`, with the 1-minute load average at 4.29
+to 4.41, by `scripts/bench-run petrus-simulation load 3 +RTS -M2G -RTS`.
+The five-repetition run at `81bbdc5` (load average 2.61 to 2.85) gave
+1.68–11.02×, and an earlier run (load average 2.95 to 3.12) 1.64–8.13×.
 
 | Scenario | Clients | Haskell req/s | Haskell p50 / p99 | Python req/s | Python p50 / p99 | Haskell / Python |
 |---|---:|---:|---:|---:|---:|---:|
-| GET profile | 1 | 14981 | 62 µs / 100 µs | 8930 | 111 µs / 145 µs | 1.68× |
-| GET profile | 4 | 20239 | 194 µs / 256 µs | 10462 | 350 µs / 698 µs | 1.93× |
-| OPTIONS preflight | 1 | 15447 | 63 µs / 91 µs | 8862 | 111 µs / 129 µs | 1.74× |
-| POST invalid body (400) | 1 | 14679 | 66 µs / 92 µs | 7711 | 129 µs / 148 µs | 1.90× |
-| POST invalid body (400) | 4 | 17727 | 217 µs / 282 µs | 9008 | 423 µs / 831 µs | 1.97× |
-| POST fixture, 32 actions | 1 | 3601 | 266 µs / 318 µs | 327 | 2.98 ms / 3.63 ms | 11.02× |
+| GET profile | 1 | 14211 | 65 µs / 116 µs | 7407 | 112 µs / 404 µs | 1.92× |
+| GET profile | 4 | 18249 | 198 µs / 266 µs | 10336 | 363 µs / 729 µs | 1.77× |
+| OPTIONS preflight | 1 | 15317 | 63 µs / 88 µs | 8799 | 109 µs / 204 µs | 1.74× |
+| POST invalid body (400) | 1 | 14040 | 69 µs / 96 µs | 7511 | 127 µs / 189 µs | 1.87× |
+| POST invalid body (400) | 4 | 18225 | 218 µs / 286 µs | 8386 | 432 µs / 875 µs | 2.17× |
+| POST fixture, 32 actions | 1 | 3065 | 275 µs / 626 µs | 313 | 3.13 ms / 4.13 ms | 9.79× |
 
 ## Notes
 

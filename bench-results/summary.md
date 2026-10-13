@@ -57,7 +57,7 @@ lists the files whose package sources have changed since.
 | `petrus-posix` | [RESULTS.md](../packages/petrus-posix/bench/RESULTS.md) | `2eb0f2a` | 7 | 1.01× | 2.29× |  |
 | `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | `b10764e` | 8 | 1.21× | 14.6× |  |
 | `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | `ba2323d` | 12 | 1.51× | 17.1× |  |
-| `petrus-simulation` | [RESULTS.md](../packages/petrus-simulation/bench/RESULTS.md) | `95e4f5c` | 17 | 1.68× | 40.6× |  |
+| `petrus-simulation` | [RESULTS.md](../packages/petrus-simulation/bench/RESULTS.md) | `e506718` | 17 | 1.71× | 40.6× |  |
 | `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | `7d1b80c` | 7 | 1.03× | 1.86× |  |
 | `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | `5a73d7a` | 4 | 2.00× | 7.00× |  |
 | `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | `37bf668` | 58 | 1.03× | 31.3× |  |
