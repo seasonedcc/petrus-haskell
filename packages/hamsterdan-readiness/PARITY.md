@@ -87,10 +87,8 @@ reference's provider-ledger doubles, in
 
 See [bench/RESULTS.md](bench/RESULTS.md). The Haskell and Python runs were
 interleaved, and the load average is noted. Haskell is faster on every row:
-
-- folding: 4.0–11.0× per loop, 6.0× for the whole corpus;
-- `render_board`: 3.7×;
-- `gate_facts`: 4.7×.
+folding (per loop and over the whole corpus), `render_board` and
+`gate_facts`.
 
 ## Gaps
 

@@ -146,55 +146,33 @@ Every file under the state root is byte-compatible in both directions.
 
 ## Benchmarks
 
-[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time on both sides,
-seven interleaved repetitions against the twin protocol (median of
-batches), 2026-10-11, load average 1.96–3.91. Haskell is faster on every
-row:
+[bench/RESULTS.md](bench/RESULTS.md) has the figures, in wall-clock time
+on both sides, interleaved against the twin protocol. Haskell is faster on
+every row: webhook ingest (100 deliveries), a reconciliation step, an agent
+turn (one webhook through the scripted Pi agent), gate classification, the
+timer rebuild and a fresh timer-store open.
 
-| Row | Haskell | Python | Speedup |
-| --- | ---: | ---: | ---: |
-| webhook ingest (100 deliveries) | 4.20 ms | 10.8 ms | 2.57× |
-| reconciliation step | 28.3 ms | 176 ms | 6.23× |
-| agent turn (one webhook through the scripted Pi agent) | 147 ms | 317 ms | 2.15× |
-| gate classification | 2.69 µs | 55.4 µs | 20.6× |
-| timer rebuild | 3.73 ms | 7.52 ms | 2.01× |
-| fresh timer-store open | 943 µs | 1.40 ms | 1.49× |
-
-The fresh open was level before (1.00× in the previous seven repetitions,
-0.95–0.99× in earlier rounds): the same system calls on both sides, and
+The fresh open used to be level: the same system calls on both sides, and
 fifteen fsyncs per open, seven of them from the schema's statements
 committing one by one. The port now creates the schema in one transaction
 (DIVERGENCES.md); the file's bytes do not change, and `TimersSpec` checks
-them against the reference's. Haskell was ahead in all seven repetitions,
-by 1.01× at the least, when the load rose to 3.9.
+them against the reference's.
 
-The process-level rows of the same file (`bench/Process.hs`, eleven
-interleaved runs, 2026-10-11, load average 4.0–5.8) measure restart,
-housekeeping, the operator's commands and the effects against the
+The process-level rows of the same file (`bench/Process.hs`) measure
+restart, housekeeping, the operator's commands and the effects against the
 reference's processes, with a 20-PR state directory of 1,228-record
-Histories and one fake GitHub for both sides (the two `serve` rows are from
-the later round under load 6.5–7.2 that RESULTS.md describes, after the
-port began writing uvicorn's log lines):
+Histories and one fake GitHub for both sides: `validate`, `inbox` and
+`inspect-instance` as fresh processes, `serve` from start to the first
+`200` on `/healthz`, 100 signed POSTs to a running `serve` (warp against
+uvicorn, both writing uvicorn's log lines), `sweep("periodic")` over 20
+loaded and 20 unloaded Instances, immutable comment publication, a native
+review batch (8 findings), the GraphQL ref compare-and-swap and a Git
+publication (local authority). Haskell is faster on every one.
 
-| Row | Haskell | Python | Speedup |
-| --- | ---: | ---: | ---: |
-| `validate` (fresh process) | 140 ms | 1.07 s | 7.65× |
-| `inbox` (fresh process) | 129 ms | 786 ms | 6.09× |
-| `inspect-instance` (fresh process, 2,001 records) | 42.0 ms | 593 ms | 14.1× |
-| `serve` start to the first `200` on `/healthz` | 346 ms | 1.08 s | 3.12× |
-| 100 signed POSTs to a running `serve` (warp against uvicorn) | 24.4 ms | 72.9 ms | 2.99× |
-| `sweep("periodic")`, 20 loaded Instances | 17.0 ms | 1.70 s | 100× |
-| `sweep("periodic")`, 20 unloaded Instances | 232 ms | 3.25 s | 14.0× |
-| immutable comment publication | 12.1 µs | 25.1 µs | 2.08× |
-| native review batch (8 findings) | 189 µs | 389 µs | 2.06× |
-| GraphQL ref compare-and-swap | 2.3 µs | 3.9 µs | 1.68× |
-| Git publication (local authority) | 307 ms | 355 ms | 1.16× |
-
-`validate`, `inbox` and `serve` were behind (0.65–0.69×) until
-agent-route repair stopped decoding each History to text to split its
-lines (hamsterdan-agents' `terminalOperations`, 988 ms to 105 ms over the
-20 Histories). The Git publication row is mostly Git's own processes on
-both sides; it read 1.03× in one three-run round.
+`validate`, `inbox` and `serve` were behind until agent-route repair
+stopped decoding each History to text to split its lines
+(hamsterdan-agents' `terminalOperations`). The Git publication row is
+mostly Git's own processes on both sides, and has the thinnest margin.
 
 ## Divergences
 

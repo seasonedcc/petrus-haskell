@@ -108,10 +108,9 @@ texts in `petrus-impetus`'s `exceptionFailureText`.
 ## The benchmark: `bench/`
 
 [`bench/RESULTS.md`](bench/RESULTS.md) compares `bench/Main.hs` (tasty-bench)
-with `bench/python_bench.py`:
+with `bench/python_bench.py`, and gives the figures. Haskell is cheaper
+on every row:
 
-- a routed emit costs 2.5 µs against the reference's 4.5 µs;
-- the default (no route) costs 0.056 µs against 2.5 µs;
-- on a 1 000-firing chain, routed telemetry costs about 4× less per firing
-  through `run` and about 3× less through `Engine.advance` at `facts`, and
-  about 2× less through `Engine.advance` at `profile`.
+- a routed emit, and the default emit (no route);
+- on a 1 000-firing chain, routed telemetry per firing, through `run` and
+  through `Engine.advance` at `facts` and at `profile`.

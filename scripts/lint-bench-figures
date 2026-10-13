@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Fail when a parity or divergence document restates a benchmark ratio.
+
+    scripts/lint-bench-figures
+
+The benchmark figures live in the results files
+(`packages/<pkg>/bench/RESULTS.md` and `bench/results-*.md`), each stamped
+with the code it measured (`scripts/bench --check`), and in
+`bench-results/summary.md`, which is generated from them and checked. A
+ratio copied into prose elsewhere goes stale with the next rerun, and
+nothing notices: the parity documents restated figures from older runs
+twice before this lint. So the parity and divergence documents point at the
+results instead ("faster than Python on every row, bench/RESULTS.md"), or
+name the row that matters ("the `postgres.child-of` row") without its
+number. `scripts/check-parity` checks what they may claim from the results:
+a component at parity cites no results file with a row below 1.0×.
+
+This script reads every tracked `PARITY.md` and `DIVERGENCES.md`, and the
+split ledgers named `parity-*.md` or under a `parity/` or `divergences/`
+directory, outside `upstream/` and `docs/audit/` (the audits are dated
+records), and rejects a
+ratio figure: a number followed by `×` (`2.3×`, `1.39–1.88×`) or a decimal
+number followed by `x` (`1.23x`). A product such as `4 × 64 KiB` (the sign
+followed by a number) and `×3` multiplicities are not ratios. There is no
+escape hatch: a non-benchmark multiple reads as well in words ("twice",
+"64 times").
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import List
+
+ROOT = Path(__file__).resolve().parent.parent
+RATIO = re.compile(r"(?<![\w.\-])\d[\d,]*(?:\.\d+)?\s?×(?!\s*\d)|(?<![\w.\-])\d[\d,]*\.\d+\s?x(?!\w)")
+LEDGER = re.compile(r"(^|/)(PARITY|DIVERGENCES)\.md$|(^|/)(parity|divergences)/[^/]+\.md$|(^|/)parity-[^/]+\.md$")
+
+
+def documents() -> List[Path]:
+    listed = subprocess.run(["git", "ls-files", "-z", "--", "*.md"], cwd=ROOT, check=True,
+                            capture_output=True).stdout.decode().split("\0")
+    return [ROOT / p for p in listed
+            if p and LEDGER.search(p) and not p.startswith(("upstream/", "docs/audit/"))]
+
+
+def problems_in(path: Path) -> List[str]:
+    return [f"{path.relative_to(ROOT)}:{number}: \"{match.group(0)}\""
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+            for match in RATIO.finditer(line)]
+
+
+def main() -> int:
+    paths = documents()
+    problems = [problem for path in paths for problem in problems_in(path)]
+    if problems:
+        print("lint-bench-figures: parity and divergence documents restate benchmark ratios, which go stale:",
+              file=sys.stderr)
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+        print("Point at the package's bench/RESULTS.md instead, or name the row without its figure "
+              "(see scripts/lint-bench-figures).", file=sys.stderr)
+        return 1
+    print(f"lint-bench-figures: no benchmark ratio restated in {len(paths)} parity and divergence documents")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

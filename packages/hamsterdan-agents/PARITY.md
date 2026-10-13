@@ -84,25 +84,17 @@ workspace receiver, and selects the Pi runner after an exact READY probe.
 
 ## Benchmarks
 
-[bench/RESULTS.md](bench/RESULTS.md) has the method and rerun commands.
-Both sides were measured in wall-clock time and interleaved; the figures
-are the medians of three repetitions on 2026-10-12. Haskell is faster on
-every row:
-
-| Row | Haskell | Python | Speedup |
-| --- | ---: | ---: | ---: |
-| prompt (review envelope) | 9.54 µs | 31.3 µs | 3.3× |
-| result (parse and validate 8 findings) | 25.3 µs | 47.7 µs | 1.9× |
-| archive admission (200 files) | 607 µs | 3.24 ms | 5.3× |
-| sealed key (seal then open) | 40.2 µs | 41.0 µs | 1.02× |
-| route claim (claim then settle) | 95.8 µs | 169 µs | 1.76× |
-| agent turn (one scripted Pi review) | 109 ms | 126 ms | 1.16× |
+[bench/RESULTS.md](bench/RESULTS.md) has the figures, the method and the
+rerun commands. Both sides are measured in wall-clock time and interleaved,
+over six rows: the prompt (review envelope), the result (parse and validate
+8 findings), archive admission (200 files), the sealed key (seal then
+open), a route claim (claim then settle) and an agent turn (one scripted Pi
+review). Haskell is faster on every row; the sealed key, which is mostly
+the same cryptography on both sides, by the thinnest margin.
 
 hamsterdan-host's [bench](../hamsterdan-host/bench/RESULTS.md) adds a full
 scripted agent turn through the host: one webhook to quiescence through the
-composed agent. Haskell takes 141 ms and Python 309 ms (2.20×), the median
-of three interleaved repetitions on 2026-10-12 (Haskell ahead in each, by
-2.17× at the least).
+composed agent, also faster in Haskell.
 
 ## Divergences
 

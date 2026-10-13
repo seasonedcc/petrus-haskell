@@ -5,7 +5,8 @@ and its use of `petrus.engine._postgres` (the private authority fence, which
 lives in `petrus-postgres` as `Petrus.Postgres.Fence`) at the pin in
 [UPSTREAM.md](../../UPSTREAM.md). The composition is
 `Petrus.Engine.Postgres.Joined`, the joined-transaction seam that the Absurd
-provider (`petrus.engine.absurd`, not ported yet) will reuse. It runs these
+provider (`petrus.engine.absurd`, ported as
+[petrus-engine-absurd](../petrus-engine-absurd/PARITY.md)) reuses. It runs these
 steps in order:
 
 1. validate the provider's preconditions;
@@ -74,7 +75,7 @@ How the reference's test doubles are spelled here:
 ## Benchmarks
 
 See [bench/RESULTS.md](bench/RESULTS.md). Every row is faster than the pinned
-Python in wall-clock time, in every one of six interleaved repetitions: deliver
-1.9×, prior redelivery 7.4×, create plus close 1.06× (dominated by connecting
-and the fence), the order scenario driven to rest through internal firings
-and an Activity round trip 2.1×, and loading a 100-order History 3.6×.
+Python in wall-clock time: deliver, prior redelivery, create plus close
+(dominated by connecting and the fence, so the thinnest), the order scenario
+driven to rest through internal firings and an Activity round trip, and
+loading a 100-order History.

@@ -10,8 +10,11 @@ Node, for `petrus-viewer-server`) on that row; below 1.0× Haskell is
 slower. Historical columns and tables (marked *before*) are left out.
 
 *Measured at* is the commit whose package sources the file's figures
-measured (its `scripts/bench: measured` marker). `scripts/bench --stale`
-lists the files whose package sources have changed since.
+measured (its `scripts/bench: measured` marker). *carried to* names the
+later commit whose sources they were carried to without a rerun (its
+`scripts/bench: carried` marker gives the reason: the change since does
+not touch the measured code paths). `scripts/bench --stale` lists the
+files whose package sources have changed since.
 
 | Package | Results | Measured at | Rows | Worst | Best | |
 | --- | --- | --- | ---: | ---: | ---: | --- |

@@ -23,8 +23,6 @@ Statuses:
 
 - **ported**: the same scenario with the same assertions.
 - **enforced by types**: the case can't be represented in Haskell.
-- **deferred**: it needs the observation HTTP adapter, which does not exist
-  yet in this repository (see below).
 
 Fixtures are compared byte for byte: the produced value, written with
 `dumps indented` plus a trailing newline, must equal the fixture file's bytes.
@@ -40,10 +38,10 @@ simulation HTTP service, so it is out of scope here.)
 Counts are upstream test functions. A parametrized test counts once; its
 parameters are separate Hspec examples where they are ported.
 
-| upstream file | ported | partly by types | by types | deferred |
-| --- | ---: | ---: | ---: | ---: |
-| engine/test_observation.py (19 tests) | 15 | 3 | 1 | 0 |
-| engine/test_observation_http.py (7 tests) | 7 (in `petrus-observation-http`) | | | 0 |
+| upstream file | ported | partly by types | by types |
+| --- | ---: | ---: | ---: |
+| engine/test_observation.py (19 tests) | 15 | 3 | 1 |
+| engine/test_observation_http.py (7 tests) | 7 (in `petrus-observation-http`) | | |
 
 `cabal test petrus-observation` runs the suite with no failure and no pending example:
 
@@ -100,8 +98,10 @@ creates the Engine at the float instant 7.5 instead (same refusal).
 
 The HTTP adapter is the package `petrus-observation-http` (on
 `petrus-http-core`); its [PARITY.md](../petrus-observation-http/PARITY.md)
-maps these 7 tests to their Hspec ports. What follows is what the adapter
-needed from this package.
+maps these 7 tests to their Hspec ports. Every obligation of
+`spec/observation-protocol-v1.md` is mapped to the example that checks it
+in [spec/observation-conformance.md](../../spec/observation-conformance.md).
+What follows is what the adapter needed from this package.
 
 All 7 functions test the observation HTTP adapter (routes, headers, query
 grammar, 405/404/OPTIONS, and transport shutdown) over a live Engine:

@@ -41,7 +41,11 @@ parity``, and not to be the component being checked.
 check-parity also names, as ``STALE evidence``, every component at parity
 that cites a results file measured on code that has changed since (see
 ``stale_results``). That is a warning, not a failure: whether the ratios
-still hold is what ``scripts/bench-gate`` measures, on request.
+still hold is what ``scripts/bench-gate`` measures, on request. A results
+file carried forward to the current sources (``scripts/bench --carry``: the
+change since does not touch the measured code paths) is current; check-parity
+names the components citing one as ``CARRIED evidence``, with the commit the
+figures were measured at and the carry's reason.
 """
 
 from __future__ import annotations
@@ -149,6 +153,38 @@ def measured_line(fingerprint: str, commit: str) -> str:
     return f"<!-- scripts/bench: measured sources {fingerprint} at {commit[:12]} -->"
 
 
+# A carry records that the figures, measured at an older commit, still hold
+# for later sources: the change since cannot touch the code paths they
+# measure (a bounds check on another path, a doc comment). Each carry keeps
+# the measured marker and adds a line after it; a later carry adds another,
+# and a real rerun (`scripts/bench --stamp`) removes them all.
+CARRIED = re.compile(r"<!-- scripts/bench: carried to ([0-9a-f]{16}) at ([0-9a-f]{12}): (.+?) -->\n?")
+
+
+def carried(path: Path) -> List[Tuple[str, str, str]]:
+    """(sources fingerprint, commit, reason) of each carry marker, oldest first."""
+    return CARRIED.findall(path.read_text(encoding="utf-8"))
+
+
+def carried_line(fingerprint: str, commit: str, reason: str) -> str:
+    return f"<!-- scripts/bench: carried to {fingerprint} at {commit[:12]}: {reason} -->"
+
+
+def current(path: Path) -> Optional[Tuple[str, str]]:
+    """(sources fingerprint, commit) the file's figures stand for: the latest
+    carry's, or else the measurement's."""
+    carries = carried(path)
+    return carries[-1][:2] if carries else measured(path)
+
+
+def provenance(path: Path) -> str:
+    """Where the file's figures come from: "measured at C", plus ", carried
+    to D" when a carry stands for later sources."""
+    marker, carries = measured(path), carried(path)
+    text = f"measured at {marker[1][:7]}" if marker else "not measured"
+    return text + (f", carried to {carries[-1][1][:7]}" if carries else "")
+
+
 def counted(package: str, relative: str) -> bool:
     """Whether a file of the package (path relative to it) is one of the
     sources its benchmark measures: everything but prose (*.md, LICENSE,
@@ -242,17 +278,17 @@ def sources_fingerprint(package: str, treeish: str = "HEAD") -> str:
 
 def stale_results() -> Dict[Path, str]:
     """The results files whose fingerprint (`sources_fingerprint`) differs
-    from the one their figures measured (their `measured` marker), with the
-    commit they were measured at."""
+    from the one their figures stand for (`current`: the latest carry, or the
+    measurement), with their `provenance`."""
     found: Dict[Path, str] = {}
     fingerprints: Dict[str, str] = {}
     for path in results_files():
-        marker = measured(path)
+        marker = current(path)
         package = path.parent.parent.name
         if package not in fingerprints:
             fingerprints[package] = sources_fingerprint(package)
         if marker and marker[0] != fingerprints[package]:
-            found[path] = marker[1]
+            found[path] = provenance(path)
     return found
 
 
@@ -284,8 +320,11 @@ def summary() -> str:
         "slower. Historical columns and tables (marked *before*) are left out.",
         "",
         "*Measured at* is the commit whose package sources the file's figures",
-        "measured (its `scripts/bench: measured` marker). `scripts/bench --stale`",
-        "lists the files whose package sources have changed since.",
+        "measured (its `scripts/bench: measured` marker). *carried to* names the",
+        "later commit whose sources they were carried to without a rerun (its",
+        "`scripts/bench: carried` marker gives the reason: the change since does",
+        "not touch the measured code paths). `scripts/bench --stale` lists the",
+        "files whose package sources have changed since.",
         "",
         "| Package | Results | Measured at | Rows | Worst | Best | |",
         "| --- | --- | --- | ---: | ---: | ---: | --- |",
@@ -295,8 +334,10 @@ def summary() -> str:
         found = ratios(path)
         package = path.parent.parent.name
         link = f"[{path.name}](../{path.relative_to(ROOT).as_posix()})"
-        marker = measured(path)
+        marker, carries = measured(path), carried(path)
         at = f"`{marker[1][:7]}`" if marker else "—"
+        if carries:
+            at += f", carried to `{carries[-1][1][:7]}`"
         if not found:
             lines.append(f"| `{package}` | {link} | {at} | 0 | — | — | no ratio table |")
             continue
@@ -368,14 +409,18 @@ def check_parity() -> int:
             print("  " + problem, file=sys.stderr)
         return 1
     stale = stale_results()
-    on_stale = []
+    on_stale, on_carried = [], []
     for component, status, evidence in rows:
         if not status.startswith("at parity"):
             continue
         cited = sorted(set(re.findall(r"packages/[\w.-]+/bench/[\w.-]+\.md", evidence)))
-        old = [f"{c} (measured at {stale[ROOT / c][:7]})" for c in cited if ROOT / c in stale]
+        old = [f"{c} ({stale[ROOT / c]})" for c in cited if ROOT / c in stale]
         if old:
             on_stale.append(f"{component}: {', '.join(old)}")
+        kept = [f"{c} ({provenance(ROOT / c)}: {carried(ROOT / c)[-1][2]})" for c in cited
+                if ROOT / c not in stale and (ROOT / c).exists() and carried(ROOT / c)]
+        if kept:
+            on_carried.append(f"{component}: {', '.join(kept)}")
     if on_stale:
         print(f"STALE evidence: {len(on_stale)} components at parity cite benchmark results measured on code that has"
               " changed since (`scripts/bench --stale`); their ratios are not current:", file=sys.stderr)
@@ -383,6 +428,11 @@ def check_parity() -> int:
             print("  " + line, file=sys.stderr)
             if os.environ.get("GITHUB_ACTIONS"):
                 print(f"::warning file=PARITY.md::stale benchmark evidence: {line}")
+    if on_carried:
+        print(f"CARRIED evidence: {len(on_carried)} components at parity cite benchmark results carried forward"
+              " from an older measurement, for the reason given:", file=sys.stderr)
+        for line in on_carried:
+            print("  " + line, file=sys.stderr)
     return 0
 
 

@@ -125,15 +125,13 @@ schema, and call and spawn each other.
 
 ## Performance
 
-[bench/RESULTS.md](bench/RESULTS.md), in wall-clock time, twelve interleaved
-repetitions: Haskell is 2.8–14× faster on values and the Activity, and
-1.39–1.88× on the registry operations, which are round trips to the server
-(`postgres.child-of` 1.50×, winning 11 of 12 repetitions on a heavily loaded
-machine). `postgres.child-of` used to come out level at 0.97×: both clients
-send the same statements, but psycopg executes them by name once they have run
-five times, and petrus-postgres now keeps the same prepared-statement cache.
-A whole call over the PostgreSQL Fabric is 1.81× faster: request, the
-callee's drain and reply, and the caller's drain and validation. Haskell won
-6 of 6 repetitions.
-Earlier figures of 3–5.5× were tasty-bench CPU time, which leaves out the wait
-for the server.
+[bench/RESULTS.md](bench/RESULTS.md) has the figures, in wall-clock time over
+interleaved repetitions: Haskell is faster on every row, on values and the
+Activity, and by a thinner margin on the registry operations, which are
+round trips to the server. `postgres.child-of` used to come out level: both
+clients send the same statements, but psycopg executes them by name once
+they have run five times, and petrus-postgres now keeps the same
+prepared-statement cache. A whole call over the PostgreSQL Fabric is faster
+too: request, the callee's drain and reply, and the caller's drain and
+validation. Earlier, higher figures were tasty-bench CPU time, which leaves
+out the wait for the server.

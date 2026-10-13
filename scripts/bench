@@ -10,6 +10,9 @@
     scripts/bench --stale           # the results files whose package sources changed since measured
     scripts/bench --stamp PKG [FILE.md ...]
                                     # after a rerun: record that PKG's figures measure HEAD's sources
+    scripts/bench --carry PKG [FILE.md ...] --reason "TEXT"
+                                    # without a rerun: record that the figures still hold for HEAD's
+                                    # sources, because the change since does not touch what they measure
     scripts/bench --smoke [PKG ...] # build every benchmark and run it once, quickly (CI's `full` run)
 
 Each package's results (``packages/<pkg>/bench/RESULTS.md``) are curated by
@@ -50,6 +53,21 @@ remeasures the headline rows on request, and
 ``--stale`` lists the same files. After rerunning a package and updating its
 figures, ``--stamp PKG`` (or ``--stamp PKG results-x.md`` for one of several
 files) records HEAD's fingerprint and regenerates the summary.
+
+When the change since the measurement cannot touch the code paths the
+figures measured (a bounds check on another path, a doc comment, a provider
+the benchmark never runs), ``--carry PKG [FILE.md ...] --reason "TEXT"``
+says so instead of a rerun. It keeps the measured marker as it is and adds,
+after it and any earlier carry,
+
+    <!-- scripts/bench: carried to FINGERPRINT at COMMIT: REASON -->
+
+with HEAD's fingerprint and commit. The reason is required: it is the
+claim that the change does not touch the measured paths, for a reviewer to
+check. ``--check`` and ``--stale`` count a file as current when its latest
+carry matches; ``bench-results/summary.md`` and ``scripts/check-parity``
+show which files are carried, from which measured commit. A carry never
+refreshes a figure: rerunning and ``--stamp`` does, and removes the carries.
 
 ``--smoke`` is not a measurement: it builds every benchmark and runs it once
 (tasty-bench's ``--stdev Infinity``, or the sh block after a
@@ -168,8 +186,8 @@ def run(package: str) -> int:
 def stale() -> List[str]:
     """The results files whose measured sources differ from the ones their
     figures measured (their `measured` marker)."""
-    return [f"{path.relative_to(ROOT)} (measured at {commit})"
-            for path, commit in bench_results.stale_results().items()]
+    return [f"{path.relative_to(ROOT)} ({provenance})"
+            for path, provenance in bench_results.stale_results().items()]
 
 
 def check() -> int:
@@ -188,15 +206,22 @@ def check() -> int:
     if status == 0:
         print(f"{len(benchmark_packages())} benchmark packages document their rerun and the sources they measured;"
               " bench-results/summary.md is current")
+    stale_files = bench_results.stale_results()
     changed = stale()
+    for path in bench_results.results_files():
+        carries = bench_results.carried(path)
+        if carries and path not in stale_files:
+            print(f"CARRIED {path.relative_to(ROOT)} ({bench_results.provenance(path)}): {carries[-1][2]}",
+                  file=sys.stderr)
     for entry in changed:
         print(f"STALE {entry}: its package's sources or dependencies changed since it was measured", file=sys.stderr)
         if os.environ.get("GITHUB_ACTIONS"):
-            print(f"::warning file={entry.split(' ')[0]}::benchmark results measured other code (stale since"
-                  f" {entry.split('measured at ')[-1].rstrip(')')}); rerun them and `scripts/bench --stamp`")
+            print(f"::warning file={entry.split(' ')[0]}::benchmark results measured other code"
+                  f" ({entry.split(' (', 1)[1].rstrip(')')}); rerun them and `scripts/bench --stamp`")
     if changed:
         print(f"warning: {len(changed)} of {len(bench_results.results_files())} results files are stale: their"
-              " figures measured code that has changed since (rerun each and `scripts/bench --stamp PKG`)",
+              " figures measured code that has changed since (rerun each and `scripts/bench --stamp PKG`, or"
+              " `--carry` one whose change cannot touch the measured code paths)",
               file=sys.stderr)
     return status
 
@@ -205,15 +230,12 @@ def stamp(packages: List[str], files: List[str]) -> int:
     """Record, in each results file of the packages (or only FILES), that its
     figures measure the package's sources as committed in HEAD. Run it after
     rerunning a package's benchmarks and updating its figures, from a commit
-    whose package sources are the ones measured."""
-    head = bench_results.subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True,
-                                        stdout=bench_results.subprocess.PIPE, text=True).stdout.strip()
-    for path in bench_results.results_files():
-        package = path.parent.parent.name
-        if package not in packages or (files and path.name not in files):
-            continue
-        line = bench_results.measured_line(bench_results.sources_fingerprint(package), head)
-        text = path.read_text(encoding="utf-8")
+    whose package sources are the ones measured. It removes any carry
+    markers: the figures are measured again."""
+    head = head_commit()
+    for path in selected_results(packages, files):
+        line = bench_results.measured_line(bench_results.sources_fingerprint(path.parent.parent.name), head)
+        text = bench_results.CARRIED.sub("", path.read_text(encoding="utf-8"))
         if bench_results.MEASURED.search(text):
             text = bench_results.MEASURED.sub(line, text, count=1)
         else:
@@ -222,6 +244,45 @@ def stamp(packages: List[str], files: List[str]) -> int:
         path.write_text(text, encoding="utf-8")
         print(f"{path.relative_to(ROOT)}: {line}")
     return bench_results.main(["summary", "--write"])
+
+
+def carry(packages: List[str], files: List[str], reason: str) -> int:
+    """Record, in each results file of the packages (or only FILES), that its
+    figures, measured at an older commit, still hold for the package's
+    sources as committed in HEAD, for REASON: the change since does not
+    touch the code paths they measure. The measured marker stays as it is;
+    the carry line goes after it and after any earlier carry."""
+    head = head_commit()
+    status = 0
+    for path in selected_results(packages, files):
+        fingerprint = bench_results.sources_fingerprint(path.parent.parent.name)
+        claimed = bench_results.current(path)
+        if claimed is None:
+            print(f"{path.relative_to(ROOT)}: no measured marker to carry (rerun it and `--stamp`)", file=sys.stderr)
+            status = 1
+            continue
+        if claimed[0] == fingerprint:
+            print(f"{path.relative_to(ROOT)}: already current ({bench_results.provenance(path)})")
+            continue
+        text = path.read_text(encoding="utf-8")
+        last = (list(bench_results.CARRIED.finditer(text)) or [bench_results.MEASURED.search(text)])[-1]
+        end = text.find("\n", last.start())
+        end = len(text) if end < 0 else end
+        line = bench_results.carried_line(fingerprint, head, reason)
+        path.write_text(f"{text[:end]}\n{line}{text[end:]}", encoding="utf-8")
+        print(f"{path.relative_to(ROOT)}: {line}")
+    return status or bench_results.main(["summary", "--write"])
+
+
+def head_commit() -> str:
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True, stdout=subprocess.PIPE,
+                          text=True).stdout.strip()
+
+
+def selected_results(packages: List[str], files: List[str]) -> List[Path]:
+    """The results files of the packages, or only those named FILES."""
+    return [path for path in bench_results.results_files()
+            if path.parent.parent.name in packages and (not files or path.name in files)]
 
 
 SMOKE = "<!-- scripts/bench: smoke -->"
@@ -314,9 +375,14 @@ def smoke(packages: List[str]) -> int:
 
 
 def main(argv: List[str]) -> int:
+    reason = None
+    if "--reason" in argv:
+        at = argv.index("--reason")
+        reason, argv = " ".join(argv[at + 1:at + 2]), argv[:at] + argv[at + 2:]
     flags = [a for a in argv if a.startswith("-")]
     packages = [a for a in argv if not a.startswith("-")]
-    unknown_flags = [f for f in flags if f not in ("--list", "--summary", "--check", "--stale", "--stamp", "--smoke", "-h", "--help")]
+    unknown_flags = [f for f in flags if f not in ("--list", "--summary", "--check", "--stale", "--stamp", "--carry",
+                                                   "--smoke", "-h", "--help")]
     if unknown_flags or "-h" in flags or "--help" in flags:
         print(__doc__, file=sys.stderr)
         return 2 if unknown_flags else 0
@@ -342,6 +408,13 @@ def main(argv: List[str]) -> int:
             print("--stamp needs the packages whose figures were just measured", file=sys.stderr)
             return 2
         return stamp(packages, files)
+    if "--carry" in flags:
+        reason = " ".join((reason or "").split())
+        if not packages or not reason or "-->" in reason:
+            print('--carry needs the packages whose figures still hold and --reason "TEXT" (no `-->`): why the'
+                  " change since they were measured does not touch the code paths they measure", file=sys.stderr)
+            return 2
+        return carry(packages, files, reason)
     selected = packages or available
     if "--smoke" in flags:
         TMP.mkdir(parents=True, exist_ok=True)

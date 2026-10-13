@@ -22,7 +22,8 @@ Port of `petrus.testing.dst` (`upstream/petrus/src/petrus/testing/dst.py`) at th
 API differences are in [DIVERGENCES.md](DIVERGENCES.md). Wire formats do not diverge.
 Benchmarks are in [bench/RESULTS.md](bench/RESULTS.md): Haskell is faster on every workload,
 including the joined worlds, where PostgreSQL does most of the work and the margin is small
-(1.10–1.11×; the isolated database alone is level at 1.02×).
+(the isolated database alone, the server's `CREATE DATABASE` and `DROP DATABASE` on both sides,
+is level).
 
 ## Evidence
 

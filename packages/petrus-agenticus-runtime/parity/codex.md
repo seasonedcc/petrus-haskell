@@ -147,12 +147,11 @@ cd upstream/petrus
 
 ## Benchmarks
 
-See `bench/results-hosts.md`: `codex-jsonl-parse` 1.8×,
-`codex-helper-parse` 2.7×, `codex-terminal-encode` 1.2× and
-`codex-terminal-parse` 2.1× the reference's speed. A whole Local Turn
-(`codex-turn`) is 1.25× (lowest of nine interleaved rounds 1.10×), and
-the A3 runtime service's round trip (`codex-a3-service-turn`) 1.01×
-(Haskell ahead in 8 of 9 rounds, lowest 0.96×).
+See `bench/results-hosts.md`: `codex-jsonl-parse`, `codex-helper-parse`,
+`codex-terminal-encode` and `codex-terminal-parse` are faster than the
+reference, and so is a whole Local Turn (`codex-turn`), over interleaved
+rounds. The A3 runtime service's round trip (`codex-a3-service-turn`) is
+the thinnest row, close to level, with single rounds on either side.
 
 ## `tests/petrus/agenticus/runtime/test_codex_real.py` (2 functions)
 
