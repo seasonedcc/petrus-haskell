@@ -1,6 +1,6 @@
 # petrus-agenticus-runtime benchmark results
 
-<!-- scripts/bench: measured sources 683fad2344b142ea at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 8d94b106ee083ab2 at 9c6cdb8df7ff -->
 
 The Pi benchmarks (frame codec, session validation, fingerprints, the
 operation ledger and a scripted A2 turn) are in [results-pi.md](results-pi.md).
@@ -24,24 +24,24 @@ These are twin workloads: `bench/Main.hs` (tasty-bench) and
 
 ## Current figures
 
-Measured on 2026-10-12, 02:57–03:06 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.26–2.93:
-five interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-12, 22:26–22:32 local (UTC-3), at commit `13f7a84`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.03–3.60:
+three interleaved repetitions, alternating which side goes first, of
 
-    scripts/bench-compare petrus-agenticus-runtime 5 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py
+    scripts/bench-compare petrus-agenticus-runtime 3 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
 directory; Python figures are the twin's own timing (CPython 3.14.6). Each
 figure is the median over the repetitions, and the ratio is Python ÷
-Haskell (above 1 means Haskell is faster). The same five repetitions measured the rows of [results-pi.md](results-pi.md) and [results-hosts.md](results-hosts.md), whose current figures are there. The
+Haskell (above 1 means Haskell is faster). The same three repetitions measured the rows of [results-pi.md](results-pi.md) and [results-hosts.md](results-hosts.md), whose current figures are there. The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `runner-3-phases-3-reads` | 5.11 ms | 10.1 ms | 1.98× | 1.93× | 5.24 ms, 5.11 ms, 5.1 ms, 5.1 ms, 5.22 ms | 10.1 ms, 10.1 ms, 10.2 ms, 10.3 ms, 10.1 ms |
-| `projection-roundtrip` | 38.8 µs | 107 µs | 2.75× | 2.74× | 38.8 µs, 38.6 µs, 38.7 µs, 38.9 µs, 38.9 µs | 107 µs, 108 µs, 107 µs, 107 µs, 107 µs |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `runner-3-phases-3-reads` | 5.41 ms | 10.1 ms | 1.86× | 1.84× | 3 of 3 | 4.99 ms, 5.41 ms, 5.48 ms | 10 ms, 10.1 ms, 10.1 ms |
+| `projection-roundtrip` | 34.8 µs | 108 µs | 3.11× | 3.04× | 3 of 3 | 34.8 µs, 34.2 µs, 35.2 µs | 108 µs, 108 µs, 107 µs |
 
 ## Results
 

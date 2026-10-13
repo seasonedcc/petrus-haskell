@@ -31,9 +31,9 @@ lists the files whose package sources have changed since.
 | `petrus-agenticus-core` | [results-effect.md](../packages/petrus-agenticus-core/bench/results-effect.md) | `13f7a84` | 5 | 2.46× | 15.6× |  |
 | `petrus-agenticus-core` | [results-hands.md](../packages/petrus-agenticus-core/bench/results-hands.md) | `13f7a84` | 5 | 1.84× | 4.05× |  |
 | `petrus-agenticus-core` | [results-thread.md](../packages/petrus-agenticus-core/bench/results-thread.md) | `13f7a84` | 5 | 1.95× | 2 023× |  |
-| `petrus-agenticus-runtime` | [RESULTS.md](../packages/petrus-agenticus-runtime/bench/RESULTS.md) | `5a73d7a` | 2 | 1.86× | 3.11× |  |
-| `petrus-agenticus-runtime` | [results-hosts.md](../packages/petrus-agenticus-runtime/bench/results-hosts.md) | `5a73d7a` | 14 | 1.13× | 6.48× |  |
-| `petrus-agenticus-runtime` | [results-pi.md](../packages/petrus-agenticus-runtime/bench/results-pi.md) | `5a73d7a` | 10 | 1.05× | 5.97× |  |
+| `petrus-agenticus-runtime` | [RESULTS.md](../packages/petrus-agenticus-runtime/bench/RESULTS.md) | `9c6cdb8` | 2 | 1.86× | 3.11× |  |
+| `petrus-agenticus-runtime` | [results-hosts.md](../packages/petrus-agenticus-runtime/bench/results-hosts.md) | `9c6cdb8` | 14 | 1.12× | 6.48× |  |
+| `petrus-agenticus-runtime` | [results-pi.md](../packages/petrus-agenticus-runtime/bench/results-pi.md) | `9c6cdb8` | 11 | 1.05× | 5.97× |  |
 | `petrus-cel` | [RESULTS.md](../packages/petrus-cel/bench/RESULTS.md) | `5a73d7a` | 21 | 7.94× | 289× |  |
 | `petrus-dsl` | [RESULTS.md](../packages/petrus-dsl/bench/RESULTS.md) | `5a73d7a` | 10 | 2.27× | 9.55× |  |
 | `petrus-dst` | [RESULTS.md](../packages/petrus-dst/bench/RESULTS.md) | `5a73d7a` | 11 | 1.00× | 4.03× |  |

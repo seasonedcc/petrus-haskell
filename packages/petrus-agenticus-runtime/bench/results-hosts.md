@@ -1,6 +1,6 @@
 # Codex, Claude and Amp host benchmark results
 
-<!-- scripts/bench: measured sources 683fad2344b142ea at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 8d94b106ee083ab2 at 9c6cdb8df7ff -->
 
 These are twin workloads, run by the tasty-bench runner `bench/Main.hs`
 (`bench/HostsBench.hs`) and by `bench/python_hosts.py` against the pinned
@@ -31,36 +31,41 @@ work: the code that runs once per provider event, frame or Turn.
 
 ## Current figures
 
-Measured on 2026-10-12, 02:57–03:06 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.26–2.93:
-five interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-12, 22:26–22:32 local (UTC-3), at commit `13f7a84`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.03–3.60:
+three interleaved repetitions, alternating which side goes first, of
 
-    scripts/bench-compare petrus-agenticus-runtime 5 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py
+    scripts/bench-compare petrus-agenticus-runtime 3 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
 directory; Python figures are the twin's own timing (CPython 3.14.6). Each
 figure is the median over the repetitions, and the ratio is Python ÷
-Haskell (above 1 means Haskell is faster). The same five repetitions measured the rows of [RESULTS.md](RESULTS.md) and [results-pi.md](results-pi.md). The
+Haskell (above 1 means Haskell is faster). The same three repetitions measured the rows of [RESULTS.md](RESULTS.md) and [results-pi.md](results-pi.md). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `codex-jsonl-parse` | 114 µs | 223 µs | 1.95× | 1.93× | 114 µs, 114 µs, 115 µs, 114 µs, 114 µs | 222 µs, 227 µs, 221 µs, 224 µs, 223 µs |
-| `codex-helper-parse` | 442 ns | 944 ns | 2.14× | 2.10× | 442 ns, 436 ns, 440 ns, 442 ns, 442 ns | 939 ns, 953 ns, 924 ns, 947 ns, 944 ns |
-| `codex-terminal-encode` | 1.17 µs | 2.61 µs | 2.23× | 2.19× | 1.17 µs, 1.17 µs, 1.18 µs, 1.17 µs, 1.17 µs | 2.67 µs, 2.61 µs, 2.63 µs, 2.56 µs, 2.59 µs |
-| `codex-terminal-parse` | 4.78 µs | 12.9 µs | 2.69× | 2.64× | 4.74 µs, 4.78 µs, 4.89 µs, 4.78 µs, 4.81 µs | 13.1 µs, 12.7 µs, 12.9 µs, 12.9 µs, 12.9 µs |
-| `claude-transcript-encode` | 150 µs | 546 µs | 3.64× | 3.59× | 152 µs, 149 µs, 150 µs, 151 µs, 149 µs | 550 µs, 543 µs, 546 µs, 543 µs, 549 µs |
-| `claude-transcript-decode` | 326 µs | 1.09 ms | 3.35× | 3.32× | 325 µs, 327 µs, 326 µs, 329 µs, 325 µs | 1.09 ms, 1.09 ms, 1.09 ms, 1.09 ms, 1.1 ms |
-| `claude-canonical-input` | 499 ns | 1.64 µs | 3.28× | 3.26× | 501 ns, 495 ns, 500 ns, 499 ns, 497 ns | 1.66 µs, 1.66 µs, 1.63 µs, 1.64 µs, 1.64 µs |
-| `claude-sanitize` | 73.6 µs | 126 µs | 1.71× | 1.70× | 73.6 µs, 74 µs, 73.4 µs, 73.7 µs, 73.4 µs | 126 µs, 127 µs, 126 µs, 126 µs, 125 µs |
-| `amp-stream-admit` | 90.5 µs | 417 µs | 4.60× | 4.53× | 91.7 µs, 90.5 µs, 90 µs, 90.2 µs, 90.6 µs | 416 µs, 414 µs, 417 µs, 419 µs, 420 µs |
-| `amp-final-text` | 72 µs | 113 µs | 1.57× | 1.55× | 71.6 µs, 71.8 µs, 72 µs, 72.9 µs, 72.6 µs | 112 µs, 113 µs, 113 µs, 113 µs, 112 µs |
-| `codex-turn` | 46.4 ms | 62.7 ms | 1.35× | 1.31× | 46.4 ms, 46.1 ms, 47.8 ms, 46.4 ms, 47.4 ms | 62.7 ms, 63.1 ms, 62.4 ms, 63.1 ms, 62.2 ms |
-| `codex-a3-service-turn` | 1.12 s | 1.25 s | 1.12× | 1.10× | 1.14 s, 1.12 s, 1.12 s, 1.12 s, 1.12 s | 1.26 s, 1.25 s, 1.25 s, 1.26 s, 1.25 s |
-| `claude-turn` | 8.26 ms | 11 ms | 1.33× | 1.28× | 8.35 ms, 8.26 ms, 8.12 ms, 8.52 ms, 8.2 ms | 11 ms, 11 ms, 10.9 ms, 10.9 ms, 11 ms |
-| `amp-turn` | 168 µs | 192 µs | 1.14× | 1.13× | 169 µs, 168 µs, 167 µs, 168 µs, 168 µs | 192 µs, 190 µs, 193 µs, 191 µs, 192 µs |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `codex-jsonl-parse` | 101 µs | 224 µs | 2.21× | 2.20× | 3 of 3 | 101 µs, 99.8 µs, 101 µs | 228 µs, 224 µs, 223 µs |
+| `codex-helper-parse` | 343 ns | 947 ns | 2.76× | 2.73× | 3 of 3 | 339 ns, 347 ns, 343 ns | 946 ns, 947 ns, 949 ns |
+| `codex-terminal-encode` | 973 ns | 2.61 µs | 2.68× | 2.63× | 3 of 3 | 973 ns, 989 ns, 972 ns | 2.56 µs, 2.63 µs, 2.61 µs |
+| `codex-terminal-parse` | 3.9 µs | 12.9 µs | 3.31× | 3.22× | 3 of 3 | 3.9 µs, 4 µs, 3.88 µs | 12.9 µs, 12.9 µs, 12.8 µs |
+| `claude-transcript-encode` | 136 µs | 545 µs | 4.00× | 3.94× | 3 of 3 | 137 µs, 136 µs, 132 µs | 538 µs, 550 µs, 545 µs |
+| `claude-transcript-decode` | 221 µs | 1.1 ms | 4.99× | 4.97× | 3 of 3 | 219 µs, 222 µs, 221 µs | 1.1 ms, 1.11 ms, 1.1 ms |
+| `claude-canonical-input` | 357 ns | 1.64 µs | 4.60× | 4.60× | 3 of 3 | 357 ns, 357 ns, 352 ns | 1.67 µs, 1.64 µs, 1.63 µs |
+| `claude-sanitize` | 61 µs | 126 µs | 2.07× | 2.00× | 3 of 3 | 61 µs, 63.1 µs, 60.4 µs | 127 µs, 126 µs, 126 µs |
+| `amp-stream-admit` | 64.3 µs | 417 µs | 6.48× | 6.46× | 3 of 3 | 63.7 µs, 64.5 µs, 64.3 µs | 417 µs, 416 µs, 420 µs |
+| `amp-final-text` | 60 µs | 113 µs | 1.88× | 1.87× | 3 of 3 | 60 µs, 61.1 µs, 59.7 µs | 113 µs, 114 µs, 113 µs |
+| `codex-turn` | 48.8 ms | 62.8 ms | 1.29× | 1.28× | 3 of 3 | 47.5 ms, 49.9 ms, 48.8 ms | 61 ms, 67.9 ms, 62.8 ms |
+| `codex-a3-service-turn` | 1.12 s | 1.26 s | 1.12× | 1.10× | 5 of 5 | 1.11 s, 1.15 s, 1.13 s, 1.12 s, 1.12 s | 1.26 s, 1.27 s, 1.27 s, 1.25 s, 1.25 s |
+| `claude-turn` | 8.45 ms | 11.7 ms | 1.38× | 1.37× | 3 of 3 | 8.27 ms, 8.45 ms, 8.49 ms | 11.4 ms, 11.7 ms, 11.7 ms |
+| `amp-turn` | 163 µs | 196 µs | 1.21× | 1.16× | 3 of 3 | 163 µs, 153 µs, 170 µs | 195 µs, 197 µs, 196 µs |
+
+`codex-a3-service-turn` read 1.13× after the three repetitions, under
+1.15×, so it got two more of its own (with the close rows of
+[results-pi.md](results-pi.md), which gives the command); its line pools
+all five.
 
 ## Results
 

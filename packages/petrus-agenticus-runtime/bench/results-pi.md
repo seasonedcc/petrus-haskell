@@ -1,6 +1,6 @@
 # Pi runtime benchmark results
 
-<!-- scripts/bench: measured sources 683fad2344b142ea at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 8d94b106ee083ab2 at 9c6cdb8df7ff -->
 
 These are twin workloads, run by the tasty-bench runner `bench/Main.hs`
 and by scripts against the pinned reference (`upstream/petrus` @ 3f85fc2):
@@ -35,11 +35,11 @@ and by scripts against the pinned reference (`upstream/petrus` @ 3f85fc2):
 
 ## Current figures
 
-Measured on 2026-10-12, 02:57–03:06 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.26–2.93:
-five interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-12, 22:26–22:32 local (UTC-3), at commit `13f7a84`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.03–3.60:
+three interleaved repetitions, alternating which side goes first, of
 
-    scripts/bench-compare petrus-agenticus-runtime 5 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py
+    scripts/bench-compare petrus-agenticus-runtime 3 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
@@ -49,26 +49,35 @@ Haskell (above 1 means Haskell is faster). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `pi-a2-scripted-turn` | 9.19 ms | 27.4 ms | 2.99× | 2.99× | 8.82 ms, 9.19 ms, 9.21 ms, 8.66 ms, 9.49 ms | 27.2 ms, 27.4 ms, 29.2 ms, 27.1 ms, 28.3 ms |
-| `pi-start-frame-encode` | 4.02 µs | 7.67 µs | 1.91× | 1.87× | 4.03 µs, 4.03 µs, 4 µs, 4.02 µs, 4.02 µs | 7.77 µs, 7.53 µs, 7.67 µs, 7.75 µs, 7.64 µs |
-| `pi-tool-call-decode` | 362 ns | 1.83 µs | 5.05× | 4.86× | 368 ns, 360 ns, 362 ns, 366 ns, 361 ns | 1.79 µs, 1.83 µs, 1.8 µs, 1.84 µs, 1.86 µs |
-| `pi-session-validate` | 152 µs | 457 µs | 3.00× | 2.95× | 153 µs, 152 µs, 153 µs, 152 µs, 152 µs | 452 µs, 457 µs, 457 µs, 449 µs, 463 µs |
-| `pi-fingerprint` | 2.23 µs | 6.29 µs | 2.82× | 2.80× | 2.22 µs, 2.23 µs, 2.24 µs, 2.24 µs, 2.23 µs | 6.28 µs, 6.31 µs, 6.27 µs, 6.3 µs, 6.29 µs |
-| `pi-a2-fingerprint` | 2.39 µs | 6.1 µs | 2.55× | 2.47× | 2.38 µs, 2.4 µs, 2.38 µs, 2.44 µs, 2.39 µs | 6.14 µs, 6.1 µs, 6.13 µs, 6.03 µs, 6.07 µs |
-| `pi-native-turn` | 39 ms | 44.1 ms | 1.13× | 1.11× | 39 ms, 39 ms, 39.2 ms, 39.6 ms, 38.9 ms | 44.1 ms, 45 ms, 43.5 ms, 45.5 ms, 43.5 ms |
-| `pi-a5-turn` | 37.3 ms | 43 ms | 1.15× | 1.14× | 37.6 ms, 37 ms, 37.7 ms, 37.3 ms, 37.3 ms | 44.2 ms, 43.6 ms, 43 ms, 42.9 ms, 42.4 ms |
-| `pi-model-phase-turn` | 26.7 ms | 28.7 ms | 1.08× | 1.07× | 26.7 ms, 26.7 ms, 26.6 ms, 26.8 ms, 26.7 ms | 28.9 ms, 28.7 ms, 28.6 ms, 28.7 ms, 29 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `pi-a2-scripted-turn` | 9.16 ms | 28.2 ms | 3.07× | 2.98× | 3 of 3 | 9.16 ms, 9.15 ms, 9.45 ms | 27.6 ms, 29.2 ms, 28.2 ms |
+| `pi-start-frame-encode` | 3.69 µs | 7.78 µs | 2.11× | 2.09× | 3 of 3 | 3.69 µs, 3.72 µs, 3.69 µs | 7.8 µs, 7.78 µs, 7.72 µs |
+| `pi-tool-call-decode` | 302 ns | 1.8 µs | 5.97× | 5.97× | 3 of 3 | 302 ns, 297 ns, 305 ns | 1.8 µs, 1.79 µs, 1.83 µs |
+| `pi-session-validate` | 136 µs | 455 µs | 3.35× | 3.31× | 3 of 3 | 135 µs, 137 µs, 136 µs | 455 µs, 452 µs, 456 µs |
+| `pi-fingerprint` | 2.02 µs | 6.37 µs | 3.15× | 3.11× | 3 of 3 | 2.02 µs, 2.05 µs, 2.02 µs | 6.32 µs, 6.37 µs, 6.38 µs |
+| `pi-a2-fingerprint` | 2.1 µs | 6.14 µs | 2.92× | 2.87× | 3 of 3 | 2.1 µs, 2.09 µs, 2.14 µs | 6.12 µs, 6.18 µs, 6.14 µs |
+| `pi-native-turn` | 40.1 ms | 45.5 ms | 1.13× | 1.09× | 5 of 5 | 40.2 ms, 39.6 ms, 40 ms, 40.2 ms, 40.1 ms | 45.5 ms, 46.4 ms, 44.5 ms, 43.9 ms, 45.7 ms |
+| `pi-a5-turn` | 38 ms | 45.4 ms | 1.20× | 1.13× | 3 of 3 | 38 ms, 37.6 ms, 40.8 ms | 44.8 ms, 45.4 ms, 46.1 ms |
+| `pi-model-phase-turn` | 27.3 ms | 28.6 ms | 1.05× | 1.01× | 5 of 5 | 27.1 ms, 27.3 ms, 27.3 ms, 27.9 ms, 26.9 ms | 28.6 ms, 28.6 ms, 28.8 ms, 28.1 ms, 28.2 ms |
+| `pi-ledger-cycle` | 884 µs | 924 µs | 1.05× | 0.98× | 4 of 5 | 884 µs, 912 µs, 868 µs, 945 µs, 881 µs | 978 µs, 924 µs, 903 µs, 923 µs, 935 µs |
 
-The `pi-ledger-cycle` row of that run read 0.98× (911 µs against 894 µs,
-0.95× at the lowest), within the noise of a row whose time is four
-fsyncs. Its own run, 15 interleaved repetitions on 2026-10-12, 04:26–04:27
-local, load average 2.43–2.60, of
+The rows under 1.15× after the three repetitions (`pi-native-turn`,
+`pi-model-phase-turn`, `pi-ledger-cycle`, and `codex-a3-service-turn` in
+[results-hosts.md](results-hosts.md)) got two more interleaved repetitions
+of those rows alone, 22:36–22:38, load average 2.34–3.21:
+
+    scripts/bench-compare petrus-agenticus-runtime 2 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py --pattern '/pi-ledger-cycle/ || /codex-a3-service-turn/ || /pi-native-turn/ || /pi-model-phase-turn/' --python-only 'pi-ledger-cycle|codex-a3-service-turn|pi-native-turn|pi-model-phase-turn'
+
+Their lines above pool all five. `pi-ledger-cycle` is four fsyncs, and its
+closeness to 1.0× is the device's noise; Haskell was ahead in 4 of the 5.
+At `81bbdc5` that row read 0.98× in the five-repetition run and, in a run
+of its own, 15 interleaved repetitions on 2026-10-12, 04:26–04:27 local,
+load average 2.43–2.60, of
 
     scripts/bench-compare petrus-agenticus-runtime 15 --pattern pi-ledger-cycle --python python_pi.py --python-only pi-ledger-cycle
 
-gives:
+gave:
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---|---|
