@@ -1,6 +1,7 @@
 # petrus-fabric benchmarks
 
 <!-- scripts/bench: measured sources 67e627d4689725f8 at e4a18a43a1f2 -->
+<!-- scripts/bench: carried to cccc5f2d0da937da at c33829edc562: only petrus-json/posix library changes upstream of it (json.loads refusal path, new helpers, docs, uuid hex digit); the admit paths it measures are unchanged -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same

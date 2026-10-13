@@ -1,6 +1,7 @@
 # petrus-json benchmarks: Haskell vs CPython's C-accelerated `json`
 
 <!-- scripts/bench: measured sources 5a71271078f89149 at c550dcb1ddee -->
+<!-- scripts/bench: carried to 1bb6fb3da10e385d at c33829edc562: the loads admit path is unchanged (only the refusal fallback moved into parseOrExplain); the rest are additions and docs -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` parse and write the
 same realistic Petrus documents with the options of the upstream call site

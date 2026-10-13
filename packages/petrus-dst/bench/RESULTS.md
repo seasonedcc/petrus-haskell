@@ -1,6 +1,7 @@
 # petrus-dst benchmark results
 
 <!-- scripts/bench: measured sources 0c320d9ec82bdc34 at 43c9546d3143 -->
+<!-- scripts/bench: carried to 11304a25a36733fc at c33829edc562: StrictJson changed only on the refusal path (admission is the same parseJson); exitInt moved unchanged; no SQLite on the bench path -->
 
 The same workloads, measured on the same inputs, in Haskell (`bench/Bench.hs`, tasty-bench)
 and in the pinned Python reference (`scripts/bench.py`, `timeit`).

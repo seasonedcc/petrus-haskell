@@ -1,6 +1,7 @@
 # petrus-engine-absurd benchmarks
 
 <!-- scripts/bench: measured sources ce04efa3aa3e4dd8 at f5aa65d0429a -->
+<!-- scripts/bench: carried to 5c917376c6314c7d at c33829edc562: Postgres-backed; the petrus-sqlite bind guard and the petrus-json/posix changes are off its measured path -->
 
 The Haskell side is [`bench/Main.hs`](Main.hs). The Python twin is
 [`bench/python_bench.py`](python_bench.py), which runs the reference's

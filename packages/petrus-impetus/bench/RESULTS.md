@@ -1,6 +1,7 @@
 # Kernel benchmarks: Haskell vs the Python reference
 
 <!-- scripts/bench: measured sources 5cb1e479ca5188c0 at d014e7c73cd6 -->
+<!-- scripts/bench: carried to 004da589f90302fb at c33829edc562: only petrus-json/posix library changes upstream of it (json.loads refusal path, new helpers, docs, uuid hex digit); the admit paths it measures are unchanged -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` build the same
 workloads: the same nets, markings, and sizes. Each Python line also prints a

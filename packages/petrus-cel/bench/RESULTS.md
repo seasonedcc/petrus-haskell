@@ -1,6 +1,7 @@
 # petrus-cel benchmark results
 
 <!-- scripts/bench: measured sources d96ae160a5a8769d at 4b2f7e6ecdef -->
+<!-- scripts/bench: carried to 231b13da2eee2ad0 at c33829edc562: Tz uses the shared normpath only in zone-key validation; the parse, evaluate and compile rows use no time zone -->
 
 Typical Petrus CEL expressions, compiled and evaluated through the Impetus
 kernel seam: `Petrus.Cel.Impetus.celCompilers` in Haskell and

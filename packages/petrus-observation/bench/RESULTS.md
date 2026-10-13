@@ -1,6 +1,7 @@
 # Observation benchmarks: Haskell vs the Python reference
 
 <!-- scripts/bench: measured sources 7ee990626ba34986 at ca1eca74ec90 -->
+<!-- scripts/bench: carried to 54a68101f0d573a5 at c33829edc562: in-package changes are tests and docs only; the upstream library changes (json refusal path, posix additions, SQLite bind guard) are off the measured snapshot and HTTP paths -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` build the same
 workload. It is a two-place loop (`a → t1 → b → t2 → a`) holding M tokens

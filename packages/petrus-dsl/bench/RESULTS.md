@@ -1,6 +1,7 @@
 # DSL benchmarks: Haskell vs the Python reference
 
 <!-- scripts/bench: measured sources f9de9ae8ef64743d at f82d9988cb9a -->
+<!-- scripts/bench: carried to f4daf96de8c8094a at c33829edc562: only petrus-json/posix library changes upstream of it (json.loads refusal path, new helpers, docs, uuid hex digit); the admit paths it measures are unchanged -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` time the same two
 workloads. Both are the `chain` and `stamped` builders of

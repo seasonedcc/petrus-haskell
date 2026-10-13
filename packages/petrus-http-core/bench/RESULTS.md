@@ -1,6 +1,7 @@
 # petrus-http-core benchmarks
 
 <!-- scripts/bench: measured sources e82d9b01f3df5af4 at 10b5172ba180 -->
+<!-- scripts/bench: carried to a19382bb69c51aa3 at c33829edc562: only petrus-json/posix library changes upstream of it (json.loads refusal path, new helpers, docs, uuid hex digit); the admit paths it measures are unchanged -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same

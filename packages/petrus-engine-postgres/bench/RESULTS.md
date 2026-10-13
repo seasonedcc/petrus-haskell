@@ -1,6 +1,7 @@
 # petrus-engine-postgres benchmarks
 
 <!-- scripts/bench: measured sources 4afcec0f20b517f8 at f87908d8bbf6 -->
+<!-- scripts/bench: carried to 92ab3166116c6a1c at c33829edc562: Postgres-backed; the petrus-sqlite bind guard and the petrus-json/posix changes are off its measured path -->
 
 The Haskell side is `bench/Main.hs`. The Python twin is `bench/python_bench.py`, which runs the reference's `petrus.engine.postgres` doors with the same names, net, and workloads. Both create a scratch database and drop it afterwards. Ratios above 1 mean Haskell is faster, and Haskell is faster on every row in every repetition. Statements now run prepared from their sixth execution, as psycopg's do (petrus-postgres's prepared-statement cache).
 

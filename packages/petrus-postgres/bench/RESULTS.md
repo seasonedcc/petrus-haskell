@@ -1,6 +1,7 @@
 # petrus-postgres benchmarks
 
 <!-- scripts/bench: measured sources 732d2ba448774b29 at b10764ebde7c -->
+<!-- scripts/bench: carried to 8a4e0f9189f363e5 at c33829edc562: Postgres-backed; the petrus-sqlite bind guard and the petrus-json/posix changes are off its measured path -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures come from `bench/Main.hs`, which uses the same names and

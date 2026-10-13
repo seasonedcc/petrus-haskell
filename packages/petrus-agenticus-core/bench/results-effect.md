@@ -1,6 +1,7 @@
 # agenticus-effect benchmark results
 
 <!-- scripts/bench: measured sources 58b8b899b48a81e2 at 13f7a84d2779 -->
+<!-- scripts/bench: carried to 79b9a7598b6cb16d at c33829edc562: the petrus-json/posix/sqlite changes (loads refusal path, posix additions, SQLite bind length guard) are off the catalog, effect, hands and thread paths, which bind no SQLite -->
 
 Twin workloads: `bench/Bench/Effect.hs` (tasty-bench) and
 `bench/python_effect.py` (the pinned reference, `upstream/petrus` @ 3f85fc2).

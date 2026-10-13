@@ -1,6 +1,7 @@
 # petrus-activity benchmarks: Haskell vs the pinned `petrus.motus.activity`
 
 <!-- scripts/bench: measured sources 56fd31b74e97d5ce at 561723ecaadb -->
+<!-- scripts/bench: carried to dd562a511befd5d2 at c33829edc562: only petrus-json/posix library changes upstream of it (json.loads refusal path, new helpers, docs, uuid hex digit); the admit paths it measures are unchanged -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` run the Activity
 value doors on the same inputs. Every row runs one door over 100 distinct

@@ -1,6 +1,7 @@
 # Telemetry overhead: Haskell vs the pinned reference
 
 <!-- scripts/bench: measured sources cabad18f45d52321 at d85b420a6b7b -->
+<!-- scripts/bench: carried to 6118533e80fc655d at c33829edc562: only petrus-json/posix library changes upstream of it (json.loads refusal path, new helpers, docs, uuid hex digit); the admit paths it measures are unchanged -->
 
 Two twin programs measure the same workloads:
 

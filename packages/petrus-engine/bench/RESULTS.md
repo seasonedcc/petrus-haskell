@@ -1,6 +1,7 @@
 # Engine benchmarks: Haskell vs the Python reference
 
 <!-- scripts/bench: measured sources 42d6d5c8600effbe at 0bf22350b52f -->
+<!-- scripts/bench: carried to 31f9601329428f10 at c33829edc562: in-memory and JSONL history; no SQLite bind or other changed code on the measured path -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` drive the same
 workloads end to end through the public Engine: `create`/`load`, `deliver`,

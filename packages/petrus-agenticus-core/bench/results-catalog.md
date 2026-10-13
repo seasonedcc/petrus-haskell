@@ -1,6 +1,7 @@
 # agenticus-catalog benchmark results
 
 <!-- scripts/bench: measured sources 58b8b899b48a81e2 at 13f7a84d2779 -->
+<!-- scripts/bench: carried to 79b9a7598b6cb16d at c33829edc562: the petrus-json/posix/sqlite changes (loads refusal path, posix additions, SQLite bind length guard) are off the catalog, effect, hands and thread paths, which bind no SQLite -->
 
 These are twin workloads: `bench/Bench/Catalog.hs` (tasty-bench) and
 `bench/python_catalog.py`, which runs the pinned reference

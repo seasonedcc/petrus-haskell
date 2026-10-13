@@ -1,6 +1,7 @@
 # petrus-history-postgres benchmarks
 
 <!-- scripts/bench: measured sources e7e75fa1416ed4c2 at 46473c2b7ca0 -->
+<!-- scripts/bench: carried to 2b8e7ce2d9865a2c at c33829edc562: Postgres-backed; the petrus-sqlite bind guard and the petrus-json/posix changes are off its measured path -->
 
 The Haskell side is `bench/Main.hs`. The Python twin is `bench/python_bench.py`, which runs the reference's `PostgresHistoryStore` with the same names, records, and statements. Both create a scratch database and drop it afterwards. Ratios above 1 mean Haskell is faster. Haskell is faster on every row: 1.20–1.44× on the round-trip rows, whose statements now run prepared from their sixth execution as psycopg's do (petrus-postgres's prepared-statement cache), and 1.9–2.0× on the loads (2.5–2.6× in the earlier figures: the Haskell load got slower since, see the note under the current figures).
 

@@ -1,6 +1,7 @@
 # Thread lifecycle benchmark results
 
 <!-- scripts/bench: measured sources 58b8b899b48a81e2 at 13f7a84d2779 -->
+<!-- scripts/bench: carried to 79b9a7598b6cb16d at c33829edc562: the petrus-json/posix/sqlite changes (loads refusal path, posix additions, SQLite bind length guard) are off the catalog, effect, hands and thread paths, which bind no SQLite -->
 
 Workload: 1000 Episodes × 4 Turns on one Thread (each Turn accepts one
 append and settles completed; each Episode settles completed with a fresh

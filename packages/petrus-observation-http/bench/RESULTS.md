@@ -1,6 +1,7 @@
 # petrus-observation-http benchmarks
 
 <!-- scripts/bench: measured sources f61bda8c028ae2e0 at 2cf4687e4eac -->
+<!-- scripts/bench: carried to 61bc61db8063f37e at c33829edc562: in-package changes are tests and docs only; the upstream library changes (json refusal path, posix additions, SQLite bind guard) are off the measured snapshot and HTTP paths -->
 
 This compares the Haskell observation server with the upstream
 `petrus.engine.observation_http` at the pin in [UPSTREAM.md](../../../UPSTREAM.md).

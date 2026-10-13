@@ -1,6 +1,7 @@
 # petrus-simulation benchmarks
 
 <!-- scripts/bench: measured sources e555967bba1f7abe at e506718a0833 -->
+<!-- scripts/bench: carried to 4772b430aa05ac5d at c33829edc562: in-package changes are tests and docs only; the upstream library changes (json refusal path, posix additions, SQLite bind guard) are off the measured snapshot and HTTP paths -->
 
 This compares the Haskell runner and service with upstream
 `petrus.simulation` and `petrus.simulation_http` at the pin in

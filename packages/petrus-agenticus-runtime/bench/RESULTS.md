@@ -1,6 +1,7 @@
 # petrus-agenticus-runtime benchmark results
 
 <!-- scripts/bench: measured sources 9a7d8d723c5eb474 at c0cb6cb59655 -->
+<!-- scripts/bench: carried to 74c3be7661028153 at c33829edc562: the runner and projection rows use in-memory stores; the CodexGondolin path helper, exitInt and SQLite bind guard changes are off their path -->
 
 The Pi benchmarks (frame codec, session validation, fingerprints, the
 operation ledger and a scripted A2 turn) are in [results-pi.md](results-pi.md).
