@@ -665,12 +665,14 @@ only those shards, and the `ci` verdict after them.
 
 | Run | Total | Notes |
 | --- | --- | --- |
-| Cold: no cache at all, every suite | about 10 min | GHC and cabal install 1 min, build 5.5 min, test jobs 1.5 to 2 min, container 6.5 min (side by side with the build) |
-| Warm, every suite (a change outside `packages/`) | about 4 min | build job 1 min, test jobs 1.5 to 2 min, `viewer` 2.5 min |
-| Warm, a change to a package many suites depend on | 4 to 5.5 min | build 1 to 3 min, depending on how much recompiles |
-| Warm, a change to a leaf package | about 3 to 4 min | its suites only |
+| Cold: no cache at all | about 10 min | GHC and cabal install 1 min, build 5.5 min, test jobs 1.5 to 2 min, container 6.5 min (side by side with the build) |
+| Warm, nothing to recompile (a change outside `packages/`) | 4.0 to 4.2 min | `build` job under 1 min (`cabal build` 8 s); then, side by side, the test jobs 1.7 to 2.5 min, `checks` 1.9 to 2.1 min and `viewer` 2.9 min |
+| Warm, packages recompiled | the above plus the extra build time | `cabal build` takes from seconds to 4.5 min, depending on how much recompiles, so 5 to 7.5 min in all |
 
-The single-runner workflow this replaced took about 50 minutes. Within a
-warm run, the longest jobs are `viewer` (the upstream petrus-viewer suites,
-about 1:45) and the shards holding parts of `hamsterdan-testing` (its
-World runs).
+Each job after `build` spends about 40 s on setup (checkout, the toolchain
+and cache restores, the upstream Python environments) before its own work;
+the test shards then spend 40 to 100 s in `cabal test`. The longest job is
+`viewer` (the upstream petrus-viewer suites alone take about 1:45), and
+`build` is on the path of every run: with nothing to recompile it is mostly
+its own setup. The single-runner workflow this replaced took about 50
+minutes.
