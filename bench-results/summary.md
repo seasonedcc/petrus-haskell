@@ -18,51 +18,51 @@ files whose package sources have changed since.
 
 | Package | Results | Measured at | Rows | Worst | Best | |
 | --- | --- | --- | ---: | ---: | ---: | --- |
-| `hamsterdan-agents` | [RESULTS.md](../packages/hamsterdan-agents/bench/RESULTS.md) | `df073f3`, carried to `f87d05b` | 6 | 1.03× | 5.23× |  |
-| `hamsterdan-contracts` | [RESULTS.md](../packages/hamsterdan-contracts/bench/RESULTS.md) | `df073f3`, carried to `f87d05b` | 7 | 1.13× | 5.39× |  |
-| `hamsterdan-export` | [RESULTS.md](../packages/hamsterdan-export/bench/RESULTS.md) | `df073f3`, carried to `60f3c54` | 6 | 1.12× | 36.4× |  |
-| `hamsterdan-github` | [RESULTS.md](../packages/hamsterdan-github/bench/RESULTS.md) | `df073f3`, carried to `f87d05b` | 8 | 1.09× | 92.7× |  |
-| `hamsterdan-host` | [RESULTS.md](../packages/hamsterdan-host/bench/RESULTS.md) | `df073f3`, carried to `60f3c54` | 18 | 1.13× | 107× |  |
-| `hamsterdan-operator` | [RESULTS.md](../packages/hamsterdan-operator/bench/RESULTS.md) | `df073f3`, carried to `60f3c54` | 7 | 1.04× | 32.6× |  |
-| `hamsterdan-readiness` | [RESULTS.md](../packages/hamsterdan-readiness/bench/RESULTS.md) | `df073f3`, carried to `f87d05b` | 13 | 3.72× | 14.2× |  |
-| `hamsterdan-testing` | [RESULTS.md](../packages/hamsterdan-testing/bench/RESULTS.md) | `df073f3`, carried to `f87d05b` | 22 | 1.62× | 24.0× |  |
-| `petrus-activity` | [RESULTS.md](../packages/petrus-activity/bench/RESULTS.md) | `561723e`, carried to `f87d05b` | 7 | 2.42× | 83.1× |  |
-| `petrus-agenticus` | [RESULTS.md](../packages/petrus-agenticus/bench/RESULTS.md) | `df073f3`, carried to `f87d05b` | 5 | 1.85× | 4.27× |  |
-| `petrus-agenticus-core` | [RESULTS.md](../packages/petrus-agenticus-core/bench/RESULTS.md) | `df073f3`, carried to `f87d05b` | 1 | 2.70× | 7.30× |  |
-| `petrus-agenticus-core` | [results-catalog.md](../packages/petrus-agenticus-core/bench/results-catalog.md) | `13f7a84`, carried to `f87d05b` | 4 | 2.34× | 6.08× |  |
-| `petrus-agenticus-core` | [results-custody.md](../packages/petrus-agenticus-core/bench/results-custody.md) | `df073f3`, carried to `f87d05b` | 2 | 5.15× | 7.65× |  |
-| `petrus-agenticus-core` | [results-effect.md](../packages/petrus-agenticus-core/bench/results-effect.md) | `13f7a84`, carried to `f87d05b` | 5 | 2.46× | 15.6× |  |
-| `petrus-agenticus-core` | [results-hands.md](../packages/petrus-agenticus-core/bench/results-hands.md) | `13f7a84`, carried to `f87d05b` | 5 | 1.84× | 4.05× |  |
-| `petrus-agenticus-core` | [results-thread.md](../packages/petrus-agenticus-core/bench/results-thread.md) | `13f7a84`, carried to `f87d05b` | 5 | 1.95× | 2 023× |  |
-| `petrus-agenticus-runtime` | [RESULTS.md](../packages/petrus-agenticus-runtime/bench/RESULTS.md) | `df073f3`, carried to `f87d05b` | 2 | 1.99× | 3.17× |  |
-| `petrus-agenticus-runtime` | [results-hosts.md](../packages/petrus-agenticus-runtime/bench/results-hosts.md) | `df073f3`, carried to `f87d05b` | 14 | 1.10× | 6.57× |  |
-| `petrus-agenticus-runtime` | [results-pi.md](../packages/petrus-agenticus-runtime/bench/results-pi.md) | `df073f3`, carried to `f87d05b` | 10 | 1.07× | 6.16× |  |
-| `petrus-cel` | [RESULTS.md](../packages/petrus-cel/bench/RESULTS.md) | `4b2f7e6`, carried to `f87d05b` | 21 | 9.95× | 337× |  |
-| `petrus-dsl` | [RESULTS.md](../packages/petrus-dsl/bench/RESULTS.md) | `f82d998`, carried to `f87d05b` | 10 | 2.33× | 11.3× |  |
-| `petrus-dst` | [RESULTS.md](../packages/petrus-dst/bench/RESULTS.md) | `f87d05b`, carried to `60f3c54` | 11 | 1.00× | 6.23× |  |
-| `petrus-engine` | [RESULTS.md](../packages/petrus-engine/bench/RESULTS.md) | `0bf2235`, carried to `60f3c54` | 5 | 6.10× | 13.9× |  |
-| `petrus-engine-absurd` | [RESULTS.md](../packages/petrus-engine-absurd/bench/RESULTS.md) | `f5aa65d`, carried to `60f3c54` | 2 | 1.08× | 1.28× |  |
-| `petrus-engine-file` | [RESULTS.md](../packages/petrus-engine-file/bench/RESULTS.md) | `df073f3`, carried to `f87d05b` | 19 | 1.26× | 9.09× |  |
-| `petrus-engine-postgres` | [RESULTS.md](../packages/petrus-engine-postgres/bench/RESULTS.md) | `f87908d`, carried to `60f3c54` | 5 | 1.10× | 13.2× |  |
-| `petrus-engine-sqlite` | [RESULTS.md](../packages/petrus-engine-sqlite/bench/RESULTS.md) | `df073f3`, carried to `60f3c54` | 4 | 1.43× | 8.22× |  |
-| `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | `df073f3`, carried to `f87d05b` | 13 | 1.01× | 11.0× |  |
-| `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | `e4a18a4`, carried to `f87d05b` | 12 | 1.38× | 10.1× |  |
-| `petrus-history-postgres` | [RESULTS.md](../packages/petrus-history-postgres/bench/RESULTS.md) | `46473c2`, carried to `f87d05b` | 7 | 1.18× | 2.01× |  |
-| `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | `f87d05b` | 14 | 1.18× | 12 099× |  |
-| `petrus-http-core` | [RESULTS.md](../packages/petrus-http-core/bench/RESULTS.md) | `10b5172`, carried to `f87d05b` | 6 | 1.75× | 19.0× |  |
-| `petrus-impetus` | [RESULTS.md](../packages/petrus-impetus/bench/RESULTS.md) | `d014e7c`, carried to `f87d05b` | 17 | 1.39× | 88.1× |  |
-| `petrus-json` | [RESULTS.md](../packages/petrus-json/bench/RESULTS.md) | `c550dcb`, carried to `f87d05b` | 8 | 1.53× | 2.97× |  |
-| `petrus-motus` | [RESULTS.md](../packages/petrus-motus/bench/RESULTS.md) | `df073f3`, carried to `f87d05b` | 14 | 1.07× | 102× |  |
-| `petrus-motus-absurd` | [RESULTS.md](../packages/petrus-motus-absurd/bench/RESULTS.md) | `679f2e6`, carried to `f87d05b` | 4 | 1.17× | 3.59× |  |
-| `petrus-motus-zeromq` | [RESULTS.md](../packages/petrus-motus-zeromq/bench/RESULTS.md) | `df073f3`, carried to `f87d05b` | 11 | 1.05× | 1.99× |  |
-| `petrus-observation` | [RESULTS.md](../packages/petrus-observation/bench/RESULTS.md) | `ca1eca7`, carried to `f87d05b` | 21 | 4.62× | 19.3× |  |
-| `petrus-observation-http` | [RESULTS.md](../packages/petrus-observation-http/bench/RESULTS.md) | `2cf4687`, carried to `60f3c54` | 11 | 2.00× | 5.96× |  |
-| `petrus-posix` | [RESULTS.md](../packages/petrus-posix/bench/RESULTS.md) | `2eb0f2a`, carried to `f87d05b` | 7 | 1.01× | 2.29× |  |
-| `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | `b10764e`, carried to `f87d05b` | 8 | 1.21× | 14.6× |  |
-| `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | `ba2323d`, carried to `f87d05b` | 12 | 1.51× | 17.1× |  |
-| `petrus-simulation` | [RESULTS.md](../packages/petrus-simulation/bench/RESULTS.md) | `e506718`, carried to `60f3c54` | 17 | 1.71× | 40.6× |  |
-| `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | `df073f3`, carried to `f87d05b` | 7 | 1.00× | 1.88× |  |
-| `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | `d85b420`, carried to `60f3c54` | 4 | 2.50× | 9.00× |  |
-| `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | `f87d05b` | 58 | 1.05× | 50.0× |  |
+| `hamsterdan-agents` | [RESULTS.md](../packages/hamsterdan-agents/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 6 | 1.03× | 5.23× |  |
+| `hamsterdan-contracts` | [RESULTS.md](../packages/hamsterdan-contracts/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 7 | 1.13× | 5.39× |  |
+| `hamsterdan-export` | [RESULTS.md](../packages/hamsterdan-export/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 6 | 1.12× | 36.4× |  |
+| `hamsterdan-github` | [RESULTS.md](../packages/hamsterdan-github/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 8 | 1.09× | 92.7× |  |
+| `hamsterdan-host` | [RESULTS.md](../packages/hamsterdan-host/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 18 | 1.13× | 107× |  |
+| `hamsterdan-operator` | [RESULTS.md](../packages/hamsterdan-operator/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 7 | 1.04× | 32.6× |  |
+| `hamsterdan-readiness` | [RESULTS.md](../packages/hamsterdan-readiness/bench/RESULTS.md) | `b4d1ccb` | 13 | 3.62× | 14.0× |  |
+| `hamsterdan-testing` | [RESULTS.md](../packages/hamsterdan-testing/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 22 | 1.62× | 24.0× |  |
+| `petrus-activity` | [RESULTS.md](../packages/petrus-activity/bench/RESULTS.md) | `561723e`, carried to `b4d1ccb` | 7 | 2.42× | 83.1× |  |
+| `petrus-agenticus` | [RESULTS.md](../packages/petrus-agenticus/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 5 | 1.85× | 4.27× |  |
+| `petrus-agenticus-core` | [RESULTS.md](../packages/petrus-agenticus-core/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 1 | 2.70× | 7.30× |  |
+| `petrus-agenticus-core` | [results-catalog.md](../packages/petrus-agenticus-core/bench/results-catalog.md) | `13f7a84`, carried to `b4d1ccb` | 4 | 2.34× | 6.08× |  |
+| `petrus-agenticus-core` | [results-custody.md](../packages/petrus-agenticus-core/bench/results-custody.md) | `df073f3`, carried to `b4d1ccb` | 2 | 5.15× | 7.65× |  |
+| `petrus-agenticus-core` | [results-effect.md](../packages/petrus-agenticus-core/bench/results-effect.md) | `13f7a84`, carried to `b4d1ccb` | 5 | 2.46× | 15.6× |  |
+| `petrus-agenticus-core` | [results-hands.md](../packages/petrus-agenticus-core/bench/results-hands.md) | `13f7a84`, carried to `b4d1ccb` | 5 | 1.84× | 4.05× |  |
+| `petrus-agenticus-core` | [results-thread.md](../packages/petrus-agenticus-core/bench/results-thread.md) | `13f7a84`, carried to `b4d1ccb` | 5 | 1.95× | 2 023× |  |
+| `petrus-agenticus-runtime` | [RESULTS.md](../packages/petrus-agenticus-runtime/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 2 | 1.99× | 3.17× |  |
+| `petrus-agenticus-runtime` | [results-hosts.md](../packages/petrus-agenticus-runtime/bench/results-hosts.md) | `df073f3`, carried to `b4d1ccb` | 14 | 1.10× | 6.57× |  |
+| `petrus-agenticus-runtime` | [results-pi.md](../packages/petrus-agenticus-runtime/bench/results-pi.md) | `df073f3`, carried to `b4d1ccb` | 10 | 1.07× | 6.16× |  |
+| `petrus-cel` | [RESULTS.md](../packages/petrus-cel/bench/RESULTS.md) | `4b2f7e6`, carried to `b4d1ccb` | 21 | 9.95× | 337× |  |
+| `petrus-dsl` | [RESULTS.md](../packages/petrus-dsl/bench/RESULTS.md) | `f82d998`, carried to `b4d1ccb` | 10 | 2.33× | 11.3× |  |
+| `petrus-dst` | [RESULTS.md](../packages/petrus-dst/bench/RESULTS.md) | `b4d1ccb` | 11 | 1.03× | 6.09× |  |
+| `petrus-engine` | [RESULTS.md](../packages/petrus-engine/bench/RESULTS.md) | `0bf2235`, carried to `b4d1ccb` | 5 | 6.10× | 13.9× |  |
+| `petrus-engine-absurd` | [RESULTS.md](../packages/petrus-engine-absurd/bench/RESULTS.md) | `f5aa65d`, carried to `b4d1ccb` | 2 | 1.08× | 1.28× |  |
+| `petrus-engine-file` | [RESULTS.md](../packages/petrus-engine-file/bench/RESULTS.md) | `b4d1ccb` | 19 | 1.34× | 9.07× |  |
+| `petrus-engine-postgres` | [RESULTS.md](../packages/petrus-engine-postgres/bench/RESULTS.md) | `f87908d`, carried to `b4d1ccb` | 5 | 1.10× | 13.2× |  |
+| `petrus-engine-sqlite` | [RESULTS.md](../packages/petrus-engine-sqlite/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 4 | 1.43× | 8.22× |  |
+| `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 13 | 1.01× | 11.0× |  |
+| `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | `e4a18a4`, carried to `b4d1ccb` | 12 | 1.38× | 10.1× |  |
+| `petrus-history-postgres` | [RESULTS.md](../packages/petrus-history-postgres/bench/RESULTS.md) | `46473c2`, carried to `b4d1ccb` | 7 | 1.18× | 2.01× |  |
+| `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | `f87d05b`, carried to `b4d1ccb` | 14 | 1.18× | 12 099× |  |
+| `petrus-http-core` | [RESULTS.md](../packages/petrus-http-core/bench/RESULTS.md) | `10b5172`, carried to `b4d1ccb` | 6 | 1.75× | 19.0× |  |
+| `petrus-impetus` | [RESULTS.md](../packages/petrus-impetus/bench/RESULTS.md) | `d014e7c`, carried to `b4d1ccb` | 17 | 1.39× | 88.1× |  |
+| `petrus-json` | [RESULTS.md](../packages/petrus-json/bench/RESULTS.md) | `c550dcb`, carried to `b4d1ccb` | 8 | 1.53× | 2.97× |  |
+| `petrus-motus` | [RESULTS.md](../packages/petrus-motus/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 14 | 1.07× | 102× |  |
+| `petrus-motus-absurd` | [RESULTS.md](../packages/petrus-motus-absurd/bench/RESULTS.md) | `679f2e6`, carried to `b4d1ccb` | 4 | 1.17× | 3.59× |  |
+| `petrus-motus-zeromq` | [RESULTS.md](../packages/petrus-motus-zeromq/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 11 | 1.05× | 1.99× |  |
+| `petrus-observation` | [RESULTS.md](../packages/petrus-observation/bench/RESULTS.md) | `ca1eca7`, carried to `b4d1ccb` | 21 | 4.62× | 19.3× |  |
+| `petrus-observation-http` | [RESULTS.md](../packages/petrus-observation-http/bench/RESULTS.md) | `2cf4687`, carried to `b4d1ccb` | 11 | 2.00× | 5.96× |  |
+| `petrus-posix` | [RESULTS.md](../packages/petrus-posix/bench/RESULTS.md) | `2eb0f2a`, carried to `b4d1ccb` | 7 | 1.01× | 2.29× |  |
+| `petrus-postgres` | [RESULTS.md](../packages/petrus-postgres/bench/RESULTS.md) | `b10764e`, carried to `b4d1ccb` | 8 | 1.21× | 14.6× |  |
+| `petrus-processes` | [RESULTS.md](../packages/petrus-processes/bench/RESULTS.md) | `ba2323d`, carried to `b4d1ccb` | 12 | 1.51× | 17.1× |  |
+| `petrus-simulation` | [RESULTS.md](../packages/petrus-simulation/bench/RESULTS.md) | `e506718`, carried to `b4d1ccb` | 17 | 1.71× | 40.6× |  |
+| `petrus-sqlite` | [RESULTS.md](../packages/petrus-sqlite/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 7 | 1.00× | 1.88× |  |
+| `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | `d85b420`, carried to `b4d1ccb` | 4 | 2.50× | 9.00× |  |
+| `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | `f87d05b`, carried to `b4d1ccb` | 58 | 1.05× | 50.0× |  |
 
 46 results files; none with a row below 1.0×.

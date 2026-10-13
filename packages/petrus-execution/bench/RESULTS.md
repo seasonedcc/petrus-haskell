@@ -2,6 +2,7 @@
 
 <!-- scripts/bench: measured sources 7cf3376d497fc91b at df073f3106e5 -->
 <!-- scripts/bench: carried to 20920a39590e067f at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: the Docker and Gondolin providers' local truthy are petrus-json's pythonTruthy, the same seven equations; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
+<!-- scripts/bench: carried to 018978b0d1b7a657 at b4d1ccb669ad: since f87d05b, no measured code changed: petrus-json gains additions only (Petrus.Json.Value exports jsonNumber and adds pyNumberCompare, Python's numeric <, NaN unordered, INLINE, beside pyNumberEq; Petrus.Json.Python.Object re-exports it), and every binding Petrus.Json.Value had before, Json's == (pythonEq), pyNumberEq and exactFloatEq among them, compiles to the same optimized Core (-O2 -ddump-simpl compared, generated constant names aside); petrus-posix's writeDirect gains a haddock sentence only -->
 
 The Haskell port compared with upstream Python Petrus (`petrus.motus.execution` /
 `_execution` at the pin in [UPSTREAM.md](../../../UPSTREAM.md)). Both harnesses run the same

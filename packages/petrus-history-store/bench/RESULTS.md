@@ -1,6 +1,7 @@
 # History store benchmarks: Haskell vs the Python reference
 
 <!-- scripts/bench: measured sources 766a1238477868a8 at f87d05b6f42b -->
+<!-- scripts/bench: carried to 1df01e70a3ef7e11 at b4d1ccb669ad: since f87d05b, no measured code changed: petrus-json gains additions only (Petrus.Json.Value exports jsonNumber and adds pyNumberCompare, Python's numeric <, NaN unordered, INLINE, beside pyNumberEq; Petrus.Json.Python.Object re-exports it), and every binding Petrus.Json.Value had before, Json's == (pythonEq), pyNumberEq and exactFloatEq among them, compiles to the same optimized Core (-O2 -ddump-simpl compared, generated constant names aside); petrus-posix's writeDirect gains a haddock sentence only -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` build the same
 History: 20 002 records from a drained 4 000-token FIFO. They time the same

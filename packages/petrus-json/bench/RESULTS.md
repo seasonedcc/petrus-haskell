@@ -3,6 +3,7 @@
 <!-- scripts/bench: measured sources 5a71271078f89149 at c550dcb1ddee -->
 <!-- scripts/bench: carried to 1bb6fb3da10e385d at c33829edc562: the loads admit path is unchanged (only the refusal fallback moved into parseOrExplain); the rest are additions and docs -->
 <!-- scripts/bench: carried to dc2967e0db88f3b2 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: Json's == (pythonEq) compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared, names aside), its numeric core numericEq/intFloatEq now being pyNumberEq/exactFloatEq, moved from Petrus.Json.Python.Object into Petrus.Json.Value and inlined at that call; PyObject's pyEq compiles as before; pythonTruthy is an addition -->
+<!-- scripts/bench: carried to d0b0ce0bdd7302f9 at b4d1ccb669ad: since f87d05b, no measured code changed: Petrus.Json.Value exports jsonNumber and adds pyNumberCompare (Python's numeric <, NaN unordered, INLINE) beside pyNumberEq, and Petrus.Json.Python.Object re-exports it; every binding Petrus.Json.Value had before, Json's == (pythonEq), pyNumberEq and exactFloatEq among them, compiles to the same optimized Core (-O2 -ddump-simpl compared, generated constant names aside), and the parseJson and dumps paths these rows time are untouched -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` parse and write the
 same realistic Petrus documents with the options of the upstream call site

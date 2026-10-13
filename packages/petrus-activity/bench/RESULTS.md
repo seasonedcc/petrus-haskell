@@ -3,6 +3,7 @@
 <!-- scripts/bench: measured sources 56fd31b74e97d5ce at 561723ecaadb -->
 <!-- scripts/bench: carried to dd562a511befd5d2 at c33829edc562: only petrus-json/posix library changes upstream of it (json.loads refusal path, new helpers, docs, uuid hex digit); the admit paths it measures are unchanged -->
 <!-- scripts/bench: carried to a4ff1c3d57b97a70 at f87d05b6f42b: since 50635f0 only petrus-json changed under it, with no behavior or representation change: Json's == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added -->
+<!-- scripts/bench: carried to 70b4386e3a66e913 at b4d1ccb669ad: since f87d05b, no measured code changed: petrus-json gains additions only (Petrus.Json.Value exports jsonNumber and adds pyNumberCompare, Python's numeric <, NaN unordered, INLINE, beside pyNumberEq; Petrus.Json.Python.Object re-exports it), and every binding Petrus.Json.Value had before, Json's == (pythonEq), pyNumberEq and exactFloatEq among them, compiles to the same optimized Core (-O2 -ddump-simpl compared, generated constant names aside); petrus-activity's own Number order is untouched -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` run the Activity
 value doors on the same inputs. Every row runs one door over 100 distinct

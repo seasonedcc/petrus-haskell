@@ -2,6 +2,7 @@
 
 <!-- scripts/bench: measured sources 72602e5ff870a7dd at df073f3106e5 -->
 <!-- scripts/bench: carried to e0a83573c2d2205c at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-motus's local-dispatch sqlite3 value == for an int against a float calls pyNumberEq, the same exact test it spelled out; petrus-sqlite's checkBindLength names the either throwIO pure . bindLength its bind loop already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
+<!-- scripts/bench: carried to 4835a61582a49ba5 at b4d1ccb669ad: since f87d05b, no measured code changed: petrus-json gains additions only (Petrus.Json.Value exports jsonNumber and adds pyNumberCompare, Python's numeric <, NaN unordered, INLINE, beside pyNumberEq; Petrus.Json.Python.Object re-exports it), and every binding Petrus.Json.Value had before, Json's == (pythonEq), pyNumberEq and exactFloatEq among them, compiles to the same optimized Core (-O2 -ddump-simpl compared, generated constant names aside); petrus-posix's writeDirect gains a haddock sentence only -->
 
 `bench/Main.hs` and `bench/python_bench.py` time the same workloads. On each
 side the client runs in the bench process and the server is a separate

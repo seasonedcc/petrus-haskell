@@ -3,6 +3,7 @@
 <!-- scripts/bench: measured sources f9de9ae8ef64743d at f82d9988cb9a -->
 <!-- scripts/bench: carried to f4daf96de8c8094a at c33829edc562: only petrus-json/posix library changes upstream of it (json.loads refusal path, new helpers, docs, uuid hex digit); the admit paths it measures are unchanged -->
 <!-- scripts/bench: carried to 35945e71d6ada0e8 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-impetus's literalInt float branch calls pyNumberEq, the same exact int/float test it spelled out; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
+<!-- scripts/bench: carried to 1ee6059828f5bd0c at b4d1ccb669ad: since f87d05b, no measured code changed: petrus-json gains additions only (Petrus.Json.Value exports jsonNumber and adds pyNumberCompare, Python's numeric <, NaN unordered, INLINE, beside pyNumberEq; Petrus.Json.Python.Object re-exports it), and every binding Petrus.Json.Value had before, Json's == (pythonEq), pyNumberEq and exactFloatEq among them, compiles to the same optimized Core (-O2 -ddump-simpl compared, generated constant names aside); petrus-posix's writeDirect gains a haddock sentence only -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` time the same two
 workloads. Both are the `chain` and `stamped` builders of

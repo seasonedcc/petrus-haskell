@@ -1,7 +1,6 @@
 # fileVersion 2 benchmarks: Haskell vs petrus-engine
 
-<!-- scripts/bench: measured sources c915260f96bb147c at df073f3106e5 -->
-<!-- scripts/bench: carried to f0deb149ca054f66 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-impetus's literalInt float branch calls pyNumberEq, the same exact int/float test it spelled out; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
+<!-- scripts/bench: measured sources c66eb0245d3bfaff at b4d1ccb669ad -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` time the same steps
 on the same input texts. `bench/process_bench.py` times the format command
@@ -68,8 +67,8 @@ table is one Haskell run and the Python run that followed it.
 
 ## Current figures
 
-Measured on 2026-10-13, 03:28–03:31 local (UTC-3), at commit `df073f3`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.79–3.40:
+Measured on 2026-10-13, 06:58–07:01 local (UTC-3), at commit `b4d1ccb`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.16–2.73:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-engine-file 3 --twin '"$(scripts/upstream-python petrus-engine)" -B packages/petrus-engine-file/bench/python_bench.py'
@@ -84,21 +83,27 @@ analysis that came with them.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
-| `chain-10.parse` | 17.5 µs | 47 µs | 2.69× | 2.69× | 3 of 3 | 17.4 µs, 17.5 µs, 17.5 µs | 47 µs, 47 µs, 48 µs |
-| `chain-10.to_json` | 32 µs | 291 µs | 9.09× | 9.09× | 3 of 3 | 32 µs, 31.7 µs, 32 µs | 291 µs, 291 µs, 293 µs |
-| `chain-10.format` | 49.6 µs | 348 µs | 7.02× | 6.99× | 3 of 3 | 49.8 µs, 49.6 µs, 49.4 µs | 348 µs, 348 µs, 346 µs |
-| `chain-10.load` | 65 µs | 170 µs | 2.62× | 2.57× | 3 of 3 | 65 µs, 64.3 µs, 65.7 µs | 172 µs, 170 µs, 169 µs |
-| `chain-1000.parse` | 3.89 ms | 4.92 ms | 1.26× | 1.23× | 3 of 3 | 3.85 ms, 3.99 ms, 3.89 ms | 4.9 ms, 4.92 ms, 4.97 ms |
-| `chain-1000.to_json` | 8.65 ms | 26.3 ms | 3.04× | 2.93× | 3 of 3 | 8.96 ms, 8.65 ms, 8.61 ms | 26.3 ms, 26.3 ms, 27.1 ms |
-| `chain-1000.format` | 12.9 ms | 33.3 ms | 2.58× | 2.57× | 3 of 3 | 12.4 ms, 12.9 ms, 13 ms | 33.1 ms, 33.3 ms, 33.5 ms |
-| `chain-1000.load` | 12.6 ms | 17.1 ms | 1.36× | 1.31× | 3 of 3 | 12.4 ms, 12.6 ms, 13.1 ms | 17 ms, 17.4 ms, 17.1 ms |
-| `chain-10000.parse` | 58.2 ms | 79.1 ms | 1.36× | 1.36× | 3 of 3 | 58.2 ms, 58.5 ms, 57.8 ms | 79.1 ms, 79.7 ms, 78.8 ms |
-| `chain-10000.to_json` | 102 ms | 287 ms | 2.81× | 2.68× | 3 of 3 | 102 ms, 107 ms, 102 ms | 286 ms, 287 ms, 287 ms |
-| `chain-10000.format` | 163 ms | 395 ms | 2.42× | 2.41× | 3 of 3 | 159 ms, 164 ms, 163 ms | 395 ms, 394 ms, 398 ms |
-| `chain-10000.load` | 176 ms | 261 ms | 1.48× | 1.45× | 3 of 3 | 180 ms, 176 ms, 175 ms | 260 ms, 261 ms, 261 ms |
-| `mounted-10.load` | 1.12 ms | 2.08 ms | 1.87× | 1.86× | 3 of 3 | 1.12 ms, 1.12 ms, 1.11 ms | 2.08 ms, 2.09 ms, 2.06 ms |
-| `mounted-100.load` | 15.7 ms | 21.6 ms | 1.37× | 1.33× | 3 of 3 | 16 ms, 15.7 ms, 15.7 ms | 21.3 ms, 21.6 ms, 21.6 ms |
-| `mounted-1000.load` | 201 ms | 276 ms | 1.37× | 1.37× | 3 of 3 | 201 ms, 197 ms, 205 ms | 276 ms, 272 ms, 297 ms |
+| `chain-10.parse` | 17.3 µs | 48 µs | 2.77× | 2.55× | 3 of 3 | 18 µs, 17.3 µs, 17.2 µs | 46 µs, 48 µs, 48 µs |
+| `chain-10.to_json` | 32.2 µs | 292 µs | 9.07× | 8.93× | 3 of 3 | 32.5 µs, 32.2 µs, 31.4 µs | 290 µs, 302 µs, 292 µs |
+| `chain-10.format` | 49.7 µs | 352 µs | 7.08× | 6.91× | 3 of 3 | 49.7 µs, 50.7 µs, 49.5 µs | 352 µs, 350 µs, 353 µs |
+| `chain-10.load` | 64.4 µs | 173 µs | 2.69× | 2.63× | 3 of 3 | 64.5 µs, 64.4 µs, 63.2 µs | 170 µs, 173 µs, 177 µs |
+| `chain-1000.parse` | 3.84 ms | 5.22 ms | 1.36× | 1.27× | 3 of 3 | 3.91 ms, 3.84 ms, 3.8 ms | 4.95 ms, 5.22 ms, 5.23 ms |
+| `chain-1000.to_json` | 8.53 ms | 26.4 ms | 3.10× | 3.08× | 3 of 3 | 8.53 ms, 8.41 ms, 8.58 ms | 26.5 ms, 26.4 ms, 26.4 ms |
+| `chain-1000.format` | 12.5 ms | 32.6 ms | 2.62× | 2.59× | 3 of 3 | 12.4 ms, 12.6 ms, 12.5 ms | 32.8 ms, 32.5 ms, 32.6 ms |
+| `chain-1000.load` | 12.7 ms | 17.1 ms | 1.34× | 1.32× | 3 of 3 | 12.9 ms, 12.7 ms, 12.7 ms | 17.1 ms, 17 ms, 17.1 ms |
+| `chain-10000.parse` | 57.2 ms | 80.6 ms | 1.41× | 1.39× | 3 of 3 | 57.2 ms, 57.2 ms, 57.5 ms | 79.8 ms, 80.6 ms, 84.9 ms |
+| `chain-10000.to_json` | 101 ms | 288 ms | 2.85× | 2.73× | 3 of 3 | 106 ms, 101 ms, 98.2 ms | 288 ms, 288 ms, 297 ms |
+| `chain-10000.format` | 166 ms | 393 ms | 2.37× | 2.24× | 3 of 3 | 166 ms, 159 ms, 175 ms | 400 ms, 393 ms, 392 ms |
+| `chain-10000.load` | 176 ms | 270 ms | 1.54× | 1.48× | 3 of 3 | 175 ms, 176 ms, 178 ms | 270 ms, 260 ms, 276 ms |
+| `mounted-10.load` | 1.11 ms | 2.1 ms | 1.90× | 1.81× | 3 of 3 | 1.11 ms, 1.11 ms, 1.18 ms | 2.1 ms, 2.06 ms, 2.15 ms |
+| `mounted-100.load` | 15.7 ms | 21.8 ms | 1.39× | 1.36× | 3 of 3 | 15.7 ms, 15.7 ms, 16.3 ms | 21.8 ms, 21.4 ms, 22.6 ms |
+| `mounted-1000.load` | 199 ms | 275 ms | 1.38× | 1.38× | 3 of 3 | 199 ms, 199 ms, 202 ms | 274 ms, 275 ms, 281 ms |
+
+At `b4d1ccb` the loader's arc sort compares a non-string path segment's
+numbers with petrus-json's `pyNumberCompare`, and `pyEqWith` reads numbers
+through the module's `valueNumber`; these nets' paths are all strings, so
+the sort takes its string-key path. Every row reads within 8% of its
+`df073f3` figure, the load rows within 5% (1.34–2.69×, against 1.36–2.62×).
 
 ## Results
 
@@ -150,27 +155,27 @@ are compared byte for byte after every run. Times are medians, the
 speed-up is Python's median over Haskell's, and "lowest round" is the
 smallest ratio within a single round.
 
-Run on 2026-10-13, 03:31–03:32 local (UTC-3), at commit `df073f3`, on the
+Run on 2026-10-13, 07:01 local (UTC-3), at commit `b4d1ccb`, on the
 same machine (Apple M4, 10 cores, 24 GB, macOS 26), with CPython 3.14.6 and
 petrus-engine at the pin, by
 
     "$(scripts/upstream-python petrus-engine)" -B packages/petrus-engine-file/bench/process_bench.py "$(cabal list-bin -v0 petrus-engine-file:exe:petrus-format-json)" 11
 
-The run had 11 rounds, with a load average of 3.02 at the start and at
-the end. The in-place row's lowest round (3.38×) is a single round; the
-median over the 11 is 5.98×, against 3.45× in the run at `6be7b9a`
-(23:05–23:06 the day before, load average 3.63–3.50), whose Haskell
-median was 35.0 ms against 20.1 ms here. That run gave 1.97–4.31× in all. The run at
+The run had 11 rounds, with a load average of 2.49 at the start and 2.38
+at the end. The in-place row moves the most between runs: its median is
+3.82× here (Haskell 31.6 ms), 5.98× in the run at `df073f3` (03:31–03:32,
+load average 3.02; Haskell 20.1 ms; 1.97–5.98× in all) and 3.45× in the run at `6be7b9a` (23:05–23:06 the day
+before, load average 3.63–3.50; Haskell 35.0 ms), which gave 1.97–4.31× in all. The run at
 `81bbdc5` (load average 2.78–2.66) gave 2.34–3.96×. An earlier run (2026-10-11, load average 5.6–5.8) gave 2.29–5.05×:
 Python's start-up was about 10 ms slower under that load, and Haskell's
 about 2 ms faster (17.0 ms against 19.4 ms for chain-10).
 
 | scenario | Python | Haskell | speed-up | lowest round |
 | --- | ---: | ---: | ---: | ---: |
-| --infile/--outfile chain-10 | 76.3 ms | 19.6 ms | 3.89× | 3.77× |
-| --infile/--outfile chain-1000 | 109.9 ms | 33.4 ms | 3.29× | 3.04× |
-| --infile/--outfile chain-10000 | 458.6 ms | 232.7 ms | 1.97× | 1.74× |
-| in place, 100 x chain-10 | 120.1 ms | 20.1 ms | 5.98× | 3.38× |
+| --infile/--outfile chain-10 | 76.4 ms | 19.3 ms | 3.96× | 3.89× |
+| --infile/--outfile chain-1000 | 112.6 ms | 34.7 ms | 3.25× | 2.87× |
+| --infile/--outfile chain-10000 | 471.6 ms | 243.8 ms | 1.93× | 1.40× |
+| in place, 100 x chain-10 | 120.9 ms | 31.6 ms | 3.82× | 3.45× |
 
 Python spends 70–85 ms starting the interpreter and importing pydantic
 and petrus-engine before it formats anything. That start-up cost decides

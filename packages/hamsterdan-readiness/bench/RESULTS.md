@@ -1,7 +1,6 @@
 # hamsterdan-readiness benchmarks
 
-<!-- scripts/bench: measured sources bb905d5b98e8ae09 at df073f3106e5 -->
-<!-- scripts/bench: carried to 76d91ac1ea6c2ef7 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: hamsterdan-readiness's Board and hamsterdan-export's Export use Hamsterdan.PyLiteral's renamed constructors (PyNone..PyDict to LitNone..LitDict), names only; Hamsterdan.Python.Value.truthy is petrus-json's pythonTruthy, the same seven equations; hamsterdan-contracts' Codec Literal int-against-float test and petrus-impetus's literalInt float branch call pyNumberEq, the same exact test they spelled out; Hamsterdan.Sqlite gains a comment only; petrus-sqlite's checkBindLength names the either throwIO pure . bindLength its bind loop already ran; petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
+<!-- scripts/bench: measured sources 724a639f32b052d5 at b4d1ccb669ad -->
 
 These are the paths the V5 net runs on every firing and every dashboard
 publication:
@@ -19,8 +18,8 @@ inputs before timing starts.
 
 ## Current figures
 
-Measured on 2026-10-13, 03:04–03:07 local (UTC-3), at commit `df073f3`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.41–3.00:
+Measured on 2026-10-13, 06:54–06:58 local (UTC-3), at commit `b4d1ccb`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.65–3.28:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare hamsterdan-readiness 3 --twin '"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-readiness/bench/bench.py'
@@ -35,19 +34,26 @@ analysis that came with them.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
-| `folding.every corpus fold (3292 calls)` | 9.8 ms | 73.2 ms | 7.47× | 7.47× | 3 of 3 | 9.8 ms, 9.82 ms, 9.59 ms | 73.2 ms, 74.6 ms, 73.1 ms |
-| `folding.ci folds (177 calls)` | 337 µs | 2.88 ms | 8.55× | 8.55× | 3 of 3 | 343 µs, 337 µs, 332 µs | 2.97 ms, 2.88 ms, 2.88 ms |
-| `folding.conv folds (250 calls)` | 401 µs | 5.7 ms | 14.21× | 13.55× | 3 of 3 | 401 µs, 399 µs, 420 µs | 5.7 ms, 5.76 ms, 5.69 ms |
-| `folding.dash folds (441 calls)` | 578 µs | 5.82 ms | 10.07× | 10.07× | 3 of 3 | 578 µs, 578 µs, 571 µs | 5.87 ms, 5.82 ms, 5.78 ms |
-| `folding.esc folds (232 calls)` | 547 µs | 4.3 ms | 7.86× | 7.68× | 3 of 3 | 544 µs, 547 µs, 559 µs | 4.3 ms, 4.31 ms, 4.29 ms |
-| `folding.life folds (341 calls)` | 872 µs | 7.11 ms | 8.15× | 8.03× | 3 of 3 | 882 µs, 872 µs, 862 µs | 7.11 ms, 7.01 ms, 7.14 ms |
-| `folding.mut folds (246 calls)` | 547 µs | 4.58 ms | 8.37× | 8.20× | 3 of 3 | 559 µs, 547 µs, 540 µs | 4.59 ms, 4.58 ms, 4.54 ms |
-| `folding.ready folds (813 calls)` | 3.28 ms | 18.2 ms | 5.55× | 5.43× | 3 of 3 | 3.28 ms, 3.3 ms, 3.24 ms | 18.3 ms, 17.9 ms, 18.2 ms |
-| `folding.rem folds (298 calls)` | 1.15 ms | 10.7 ms | 9.33× | 9.31× | 3 of 3 | 1.15 ms, 1.15 ms, 1.13 ms | 10.8 ms, 10.7 ms, 10.7 ms |
-| `folding.review folds (391 calls)` | 1.49 ms | 11.8 ms | 7.88× | 7.85× | 3 of 3 | 1.49 ms, 1.5 ms, 1.46 ms | 11.8 ms, 11.8 ms, 11.8 ms |
-| `folding.startup folds (103 calls)` | 713 ns | 3 µs | 4.21× | 4.14× | 3 of 3 | 724 ns, 713 ns, 702 ns | 3 µs, 3 µs, 3 µs |
-| `board.render_board over every corpus log (1569 logs)` | 16.3 ms | 60.6 ms | 3.72× | 3.67× | 3 of 3 | 16.5 ms, 16.3 ms, 16.2 ms | 60.5 ms, 61.3 ms, 60.6 ms |
-| `board.gate_facts over every corpus log (1569 logs)` | 12.4 ms | 57.3 ms | 4.62× | 4.58× | 3 of 3 | 12.5 ms, 12.4 ms, 12.3 ms | 57.1 ms, 57.4 ms, 57.3 ms |
+| `folding.every corpus fold (3292 calls)` | 10.2 ms | 73.3 ms | 7.20× | 6.84× | 3 of 3 | 9.62 ms, 10.7 ms, 10.2 ms | 73.8 ms, 73.1 ms, 73.3 ms |
+| `folding.ci folds (177 calls)` | 355 µs | 2.9 ms | 8.18× | 8.08× | 3 of 3 | 334 µs, 355 µs, 360 µs | 2.89 ms, 2.91 ms, 2.9 ms |
+| `folding.conv folds (250 calls)` | 407 µs | 5.7 ms | 14.01× | 13.59× | 3 of 3 | 394 µs, 407 µs, 417 µs | 5.76 ms, 5.7 ms, 5.67 ms |
+| `folding.dash folds (441 calls)` | 592 µs | 5.95 ms | 10.05× | 9.86× | 3 of 3 | 578 µs, 596 µs, 592 µs | 5.95 ms, 5.87 ms, 5.98 ms |
+| `folding.esc folds (232 calls)` | 561 µs | 4.34 ms | 7.74× | 7.63× | 3 of 3 | 539 µs, 561 µs, 584 µs | 4.34 ms, 4.34 ms, 4.45 ms |
+| `folding.life folds (341 calls)` | 879 µs | 7.11 ms | 8.10× | 8.03× | 3 of 3 | 879 µs, 872 µs, 886 µs | 7.19 ms, 7.1 ms, 7.11 ms |
+| `folding.mut folds (246 calls)` | 576 µs | 4.65 ms | 8.06× | 7.92× | 3 of 3 | 561 µs, 576 µs, 577 µs | 4.65 ms, 4.68 ms, 4.57 ms |
+| `folding.ready folds (813 calls)` | 3.35 ms | 18.4 ms | 5.50× | 5.26× | 3 of 3 | 3.5 ms, 3.22 ms, 3.35 ms | 18.4 ms, 18.9 ms, 18.4 ms |
+| `folding.rem folds (298 calls)` | 1.2 ms | 10.8 ms | 8.99× | 8.91× | 3 of 3 | 1.13 ms, 1.2 ms, 1.21 ms | 10.7 ms, 10.8 ms, 10.8 ms |
+| `folding.review folds (391 calls)` | 1.56 ms | 11.9 ms | 7.62× | 7.53× | 3 of 3 | 1.56 ms, 1.56 ms, 1.57 ms | 11.9 ms, 11.7 ms, 11.9 ms |
+| `folding.startup folds (103 calls)` | 729 ns | 3 µs | 4.11× | 4.09× | 3 of 3 | 694 ns, 734 ns, 729 ns | 3 µs, 3 µs, 3 µs |
+| `board.render_board over every corpus log (1569 logs)` | 16.8 ms | 60.7 ms | 3.62× | 3.58× | 3 of 3 | 17 ms, 16.8 ms, 16.6 ms | 60.7 ms, 61.1 ms, 60.5 ms |
+| `board.gate_facts over every corpus log (1569 logs)` | 12.7 ms | 57.3 ms | 4.52× | 4.46× | 3 of 3 | 12.7 ms, 12.3 ms, 13 ms | 57.3 ms, 57.1 ms, 58.1 ms |
+
+At `b4d1ccb` the folds' Python `<`-family comparisons of two numbers
+(`compareValues`, reached through `tupleCompare` and `pyMax2` by the esc
+folds) go through petrus-json's `pyNumberCompare` instead of a local copy.
+Every row reads within 5% of its `df073f3` figure (the esc folds 7.74×
+against 7.86×; the board rows, which compare no numbers, 3.62× and 4.52×
+against 3.72× and 4.62×).
 
 ## Results
 

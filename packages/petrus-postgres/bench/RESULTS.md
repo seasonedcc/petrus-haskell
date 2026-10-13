@@ -3,6 +3,7 @@
 <!-- scripts/bench: measured sources 732d2ba448774b29 at b10764ebde7c -->
 <!-- scripts/bench: carried to 8a4e0f9189f363e5 at c33829edc562: Postgres-backed; the petrus-sqlite bind guard and the petrus-json/posix changes are off its measured path -->
 <!-- scripts/bench: carried to 4303de61517d04c6 at f87d05b6f42b: since 50635f0, no behavior or representation change on the measured paths: petrus-json's Json == compiles to the same optimized Core as at 50635f0 (-ddump-simpl compared; numericEq/intFloatEq moved as pyNumberEq/exactFloatEq into Petrus.Json.Value and inlined there), PyObject's pyEq likewise, pythonTruthy added; petrus-posix gains additions only (DirectFd, directFd, writeDirect) and docs -->
+<!-- scripts/bench: carried to 7926435344624d49 at b4d1ccb669ad: since f87d05b, no measured code changed: petrus-json gains additions only (Petrus.Json.Value exports jsonNumber and adds pyNumberCompare, Python's numeric <, NaN unordered, INLINE, beside pyNumberEq; Petrus.Json.Python.Object re-exports it), and every binding Petrus.Json.Value had before, Json's == (pythonEq), pyNumberEq and exactFloatEq among them, compiles to the same optimized Core (-O2 -ddump-simpl compared, generated constant names aside); petrus-posix's writeDirect gains a haddock sentence only -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures come from `bench/Main.hs`, which uses the same names and
