@@ -1,6 +1,6 @@
 # hamsterdan-operator benchmarks
 
-<!-- scripts/bench: measured sources adbbe4679becb0b0 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 002f92d8ae3993b8 at 1d052836f8ca -->
 
 Seven workloads, in two shapes, all timed by wall clock (monotonic) on
 both sides.
@@ -50,22 +50,22 @@ in-process row.
 
 ## Current figures
 
-Measured on 2026-10-12, 03:58–04:00 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.63–3.00, by
+Measured on 2026-10-12, 21:57–21:58 local (UTC-3), at commit `1d05283`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 1.28–2.31, by
 
     scripts/bench-run hamsterdan-operator --runs 21 +RTS -M2G -RTS
 
-One run of the harness: each cell is the median of 21 runs, the two sides interleaved, with the minimum in parentheses. `qualification-setup` stays close to 1.0×, as in the seven-run table below and for the reason given under it. The tables in the sections below are earlier measurements.
+One run of the harness: each cell is the median of 21 runs (210 for the in-process rows), the two sides interleaved, with the minimum in parentheses; the last column counts the runs in which Haskell was faster than the Python run paired with it. `qualification-setup` stays close to 1.0× (1.02×, Haskell ahead in 119 of 210), as in the seven-run table below and for the reason given under it. The hero-review `inspect` reads 1.19× (152 of 210), against 1.50× at `81bbdc5` (649 µs then, 781 µs now): since then the operator reads its JSON with petrus-json's plain `loadsValue` instead of its own fast path (`d354c96`; 1.37× against CPython when that change was measured). A shorter run of the same harness just before (21:37–21:38, `--runs 11`) read 1.19× and 1.03× for the two rows. The tables in the sections below are earlier measurements.
 
-| Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell |
-| --- | --- | ---: | ---: | ---: |
-| `--help` | CLI (fresh process) | 20.77 ms (17.74 ms) | 692.06 ms (683.13 ms) | 33.32× |
-| `preflight` | CLI (fresh process) | 129.51 ms (117.51 ms) | 812.42 ms (803.66 ms) | 6.27× |
-| `inspect --pr 7 --expect-hero-review` (25 fake `gh` calls) | CLI (fresh process) | 592.46 ms (568.26 ms) | 1.30 s (1.29 s) | 2.20× |
-| inspect, hero review (200 comments, 20 runs of 30 jobs) | in process | 649.0 µs (593.0 µs) | 971.5 µs (918.7 µs) | 1.50× |
-| inspect-authority (40 rules, 99 reviews, 100 threads) | in process | 76.0 µs (66.0 µs) | 147.6 µs (133.3 µs) | 1.94× |
-| Git ref projection parse (2000 refs) | in process | 939.0 µs (883.0 µs) | 1.83 ms (1.71 ms) | 1.95× |
-| qualification-setup success path (scripted Git and gh) | in process | 934.0 µs (860.0 µs) | 954.6 µs (872.2 µs) | 1.02× |
+| Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell | Haskell ahead |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `--help` | CLI (fresh process) | 21.16 ms (16.73 ms) | 675.86 ms (652.35 ms) | 31.95× | 21 of 21 |
+| `preflight` | CLI (fresh process) | 130.95 ms (117.74 ms) | 805.98 ms (788.64 ms) | 6.15× | 21 of 21 |
+| `inspect --pr 7 --expect-hero-review` (25 fake `gh` calls) | CLI (fresh process) | 589.67 ms (578.07 ms) | 1.29 s (1.27 s) | 2.19× | 21 of 21 |
+| inspect, hero review (200 comments, 20 runs of 30 jobs) | in process | 781.0 µs (691.0 µs) | 925.5 µs (889.7 µs) | 1.19× | 152 of 210 |
+| inspect-authority (40 rules, 99 reviews, 100 threads) | in process | 85.0 µs (76.0 µs) | 146.6 µs (130.7 µs) | 1.72× | 210 of 210 |
+| Git ref projection parse (2000 refs) | in process | 918.0 µs (827.0 µs) | 1.75 ms (1.62 ms) | 1.90× | 210 of 210 |
+| qualification-setup success path (scripted Git and gh) | in process | 965.0 µs (817.0 µs) | 988.3 µs (862.8 µs) | 1.02× | 119 of 210 |
 
 ## Results
 

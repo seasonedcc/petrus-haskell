@@ -20,7 +20,7 @@ lists the files whose package sources have changed since.
 | `hamsterdan-export` | [RESULTS.md](../packages/hamsterdan-export/bench/RESULTS.md) | `75e8a1a` | 6 | 1.11× | 36.4× |  |
 | `hamsterdan-github` | [RESULTS.md](../packages/hamsterdan-github/bench/RESULTS.md) | `d0584bd` | 8 | 1.10× | 92.0× |  |
 | `hamsterdan-host` | [RESULTS.md](../packages/hamsterdan-host/bench/RESULTS.md) | `7180a9d` | 18 | 1.13× | 107× |  |
-| `hamsterdan-operator` | [RESULTS.md](../packages/hamsterdan-operator/bench/RESULTS.md) | `5a73d7a` | 7 | 1.02× | 33.3× |  |
+| `hamsterdan-operator` | [RESULTS.md](../packages/hamsterdan-operator/bench/RESULTS.md) | `1d05283` | 7 | 1.02× | 31.9× |  |
 | `hamsterdan-readiness` | [RESULTS.md](../packages/hamsterdan-readiness/bench/RESULTS.md) | `848eeba` | 13 | 3.73× | 14.3× |  |
 | `hamsterdan-testing` | [RESULTS.md](../packages/hamsterdan-testing/bench/RESULTS.md) | `9da9efa` | 22 | 1.62× | 24.0× |  |
 | `petrus-activity` | [RESULTS.md](../packages/petrus-activity/bench/RESULTS.md) | `5a73d7a` | 7 | 2.42× | 84.5× |  |
