@@ -41,7 +41,7 @@ parity``, and not to be the component being checked.
 check-parity also names, as ``STALE evidence``, every component at parity
 that cites a results file measured on code that has changed since (see
 ``stale_results``). That is a warning, not a failure: whether the ratios
-still hold is what the nightly ``scripts/bench-gate`` measures.
+still hold is what ``scripts/bench-gate`` measures, on request.
 """
 
 from __future__ import annotations

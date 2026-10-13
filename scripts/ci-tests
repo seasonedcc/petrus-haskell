@@ -39,8 +39,8 @@ content, not timestamps):
   nor climb out of the package with ``../`` (an environment variable, a
   path computed from another package's name). Such a dependency must be
   spelled out, outside a comment, as a relative path or the other package's
-  name in a committed file of the package that reads it. The nightly full
-  run reuses nothing, so a miss surfaces within a day;
+  name in a committed file of the package that reads it. A full run
+  (a dispatch with ``full``) reuses nothing, so a miss surfaces there;
 * every file outside packages/ (cabal.project and its freeze, scripts/, the
   upstream submodule pins, spec/, deployment/, .github/, UPSTREAM.md, ...),
   except the prose and benchmark records no test reads: README.md,
@@ -56,8 +56,8 @@ Any change to any of these reruns the suite. Ledgers are JSON artifacts
 (`test-ledger`) that the aggregate job of every CI run uploads: for each
 suite known green at that commit, its input hash and the run where it
 actually ran and passed. Only ledgers from this workflow's runs on the same
-branch or on main are read. A full run (`--full`: the nightly schedule, or a
-manual dispatch with `full`) reuses nothing.
+branch or on main are read. A full run (`--full`: a manual dispatch with `full`)
+reuses nothing.
 """
 
 from __future__ import annotations
@@ -818,7 +818,7 @@ def inputs_cmd() -> int:
 
 
 # check-all steps CI does not run: the benchmark measurements are opt-in
-# (--bench); CI only smoke-runs them nightly (scripts/bench --smoke).
+# (--bench); CI only smoke-runs them on a `full` dispatch (scripts/bench --smoke).
 NOT_IN_CI = {"Benchmarks"}
 
 

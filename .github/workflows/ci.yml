@@ -21,12 +21,12 @@ run-name: ${{ inputs.sha && format('CI for {0}', inputs.sha) || '' }}
 #   test (N)   cabal test for the suites of shard N, with PostgreSQL 17, then
 #              scripts/check-pending on their output
 #   viewer     scripts/interop --viewer petrus-viewer-server (the upstream
-#              petrus-viewer suites against the Haskell backend); nightly and
-#              `full` also the viewer's bench-gate rows against the upstream
-#              Node backend
-#   bench-smoke  nightly and `full` only: every benchmark builds and runs once
+#              petrus-viewer suites against the Haskell backend); a dispatch
+#              with `bench` also the viewer's bench-gate rows against the
+#              upstream Node backend
+#   bench-smoke  a dispatch with `full` only: every benchmark builds and runs once
 #              (scripts/bench --smoke); stale benchmark results are listed
-#   bench-gate (N)  nightly and `full` only: the thin-margin and headline rows
+#   bench-gate (N)  a dispatch with `bench` only: the thin-margin and headline rows
 #              of every package against its Python twin, 5 interleaved
 #              repetitions; fails when Haskell did not win most of a row's
 #              repetitions (scripts/bench-gate)
@@ -37,17 +37,15 @@ run-name: ${{ inputs.sha && format('CI for {0}', inputs.sha) || '' }}
 # A suite is reused instead of rerun only when its input hash (its package,
 # every local package it depends on or names, everything outside packages/
 # but prose and benchmark records, and the toolchain and runner image) equals
-# the hash of a run where it passed (scripts/ci-tests explains the hash). The
-# nightly schedule and a dispatch with `full` build from an empty
-# dist-newstyle and rerun everything.
+# the hash of a run where it passed (scripts/ci-tests explains the hash). A
+# dispatch with `full` builds from an empty dist-newstyle and reruns
+# everything.
 # docs/reproducing.md, "Continuous integration", has the details.
 
 on:
   push:
     branches: [main]
   pull_request:
-  schedule:
-    - cron: "17 4 * * *"
   workflow_dispatch:
     inputs:
       full:
@@ -58,6 +56,10 @@ on:
         description: Test this commit (of the chosen branch) instead of its tip
         type: string
         default: ""
+      bench:
+        description: Also measure the gated benchmark rows against Python (scripts/bench-gate)
+        type: boolean
+        default: false
 
 # A newer push to a branch or pull request cancels its older run. Every
 # push to main gets a complete run of its tip, and each run on main has a
@@ -79,13 +81,13 @@ env:
   CABAL_DIR: /home/runner/.cabal
   PETRUS_POSTGRES_IMAGE: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
   DIST_KEY_PREFIX: dist-v1-Linux-ghc-9.10.3-
-  # The nightly run and a `full` dispatch build from an empty dist-newstyle
-  # and reuse no test result.
-  FULL_RUN: ${{ (github.event_name == 'schedule' || inputs.full) && 'true' || 'false' }}
+  # A `full` dispatch builds from an empty dist-newstyle and reuses no test
+  # result.
+  FULL_RUN: ${{ inputs.full && 'true' || 'false' }}
   # The dist-newstyle the build job saves and the later jobs restore; a full
   # run has a key of its own, so that its later jobs never restore an
   # incremental build saved earlier for the same commit.
-  DIST_KEY: dist-v1-Linux-ghc-9.10.3-${{ (github.event_name == 'schedule' || inputs.full) && format('full-{0}-', github.run_id) || '' }}${{ inputs.sha || github.sha }}
+  DIST_KEY: dist-v1-Linux-ghc-9.10.3-${{ inputs.full && format('full-{0}-', github.run_id) || '' }}${{ inputs.sha || github.sha }}
 
 jobs:
   lint:
@@ -304,7 +306,7 @@ jobs:
       # scripts/bench-gate's viewer rows, here because this job has the
       # built UI (bench/run.mjs runs the upstream Node backend beside petrus)
       - name: The viewer backend against the upstream Node backend (scripts/bench-gate)
-        if: github.event_name == 'schedule' || inputs.full
+        if: inputs.bench
         run: scripts/bench-gate petrus-viewer-server --json bench-gate-viewer.json
       - uses: actions/upload-artifact@v4
         if: always()
@@ -313,7 +315,7 @@ jobs:
           path: results-*.json
           retention-days: 30
       - uses: actions/upload-artifact@v4
-        if: always() && (github.event_name == 'schedule' || inputs.full)
+        if: always() && inputs.bench
         with:
           name: bench-gate-viewer
           path: |
@@ -327,13 +329,13 @@ jobs:
           path: /tmp/petrus-hs-upstream-tests-*/*.tap
           retention-days: 7
 
-  # The nightly run and a `full` dispatch only: every benchmark builds and
+  # A `full` dispatch only: every benchmark builds and
   # runs to the end once (scripts/bench --smoke; not a measurement), and the
   # results files whose package sources changed since they were measured are
   # listed in the run summary (scripts/bench --stale; informational).
   bench-smoke:
     needs: build
-    if: github.event_name == 'schedule' || inputs.full
+    if: inputs.full
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 90
     services:
@@ -391,7 +393,7 @@ jobs:
   # trust, in the same runs).
   bench-gate:
     needs: build
-    if: github.event_name == 'schedule' || inputs.full
+    if: inputs.bench
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 150
     strategy:
