@@ -1,6 +1,6 @@
 # Engine benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources 1bba5dbb515798a9 at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 42d6d5c8600effbe at 0bf22350b52f -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` drive the same
 workloads end to end through the public Engine: `create`/`load`, `deliver`,
@@ -32,8 +32,8 @@ The workloads:
 
 ## Current figures
 
-Measured on 2026-10-12, 01:55–01:56 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.39–2.86:
+Measured on 2026-10-12, 22:59–23:00 local (UTC-3), at commit `43c9546`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 3.88–4.77:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-engine 3
@@ -46,13 +46,13 @@ Haskell (above 1 means Haskell is faster). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
 
-| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell per repetition | Python per repetition |
-|---|---:|---:|---:|---:|---|---|
-| `engine.orders-small` | 196 µs | 2.48 ms | 12.66× | 12.64× | 197 µs, 196 µs, 196 µs | 2.54 ms, 2.47 ms, 2.48 ms |
-| `engine.orders-large` | 98.3 ms | 777 ms | 7.90× | 7.87× | 98.6 ms, 98.3 ms, 98.3 ms | 777 ms, 774 ms, 783 ms |
-| `engine.orders-large-jsonl` | 158 ms | 881 ms | 5.58× | 5.51× | 159 ms, 158 ms, 158 ms | 881 ms, 902 ms, 871 ms |
-| `engine.chain` | 46.1 ms | 420 ms | 9.11× | 9.05× | 46.4 ms, 46.1 ms, 45.9 ms | 420 ms, 424 ms, 418 ms |
-| `engine.load-jsonl` | 12.8 ms | 114 ms | 8.89× | 8.65× | 13.1 ms, 12.8 ms, 12.8 ms | 113 ms, 116 ms, 114 ms |
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `engine.orders-small` | 183 µs | 2.54 ms | 13.87× | 12.92× | 3 of 3 | 193 µs, 181 µs, 183 µs | 2.5 ms, 2.71 ms, 2.54 ms |
+| `engine.orders-large` | 84.6 ms | 782 ms | 9.24× | 9.18× | 3 of 3 | 84.6 ms, 80.8 ms, 85.2 ms | 781 ms, 787 ms, 782 ms |
+| `engine.orders-large-jsonl` | 145 ms | 882 ms | 6.10× | 6.08× | 3 of 3 | 145 ms, 143 ms, 145 ms | 882 ms, 876 ms, 894 ms |
+| `engine.chain` | 40.8 ms | 420 ms | 10.28× | 10.01× | 3 of 3 | 40.8 ms, 41.5 ms, 40 ms | 420 ms, 415 ms, 421 ms |
+| `engine.load-jsonl` | 11.4 ms | 117 ms | 10.18× | 9.98× | 3 of 3 | 11.1 ms, 11.7 ms, 11.4 ms | 116 ms, 117 ms, 117 ms |
 
 ## How to rerun
 

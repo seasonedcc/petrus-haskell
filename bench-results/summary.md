@@ -37,7 +37,7 @@ lists the files whose package sources have changed since.
 | `petrus-cel` | [RESULTS.md](../packages/petrus-cel/bench/RESULTS.md) | `4b2f7e6` | 21 | 9.95× | 337× |  |
 | `petrus-dsl` | [RESULTS.md](../packages/petrus-dsl/bench/RESULTS.md) | `f82d998` | 10 | 2.33× | 11.3× |  |
 | `petrus-dst` | [RESULTS.md](../packages/petrus-dst/bench/RESULTS.md) | `43c9546` | 11 | 1.00× | 6.23× |  |
-| `petrus-engine` | [RESULTS.md](../packages/petrus-engine/bench/RESULTS.md) | `5a73d7a` | 5 | 5.58× | 12.7× |  |
+| `petrus-engine` | [RESULTS.md](../packages/petrus-engine/bench/RESULTS.md) | `0bf2235` | 5 | 6.10× | 13.9× |  |
 | `petrus-engine-absurd` | [RESULTS.md](../packages/petrus-engine-absurd/bench/RESULTS.md) | `5a73d7a` | 2 | 1.15× | 1.29× |  |
 | `petrus-engine-file` | [RESULTS.md](../packages/petrus-engine-file/bench/RESULTS.md) | `5a73d7a` | 19 | 1.24× | 6.22× |  |
 | `petrus-engine-postgres` | [RESULTS.md](../packages/petrus-engine-postgres/bench/RESULTS.md) | `5a73d7a` | 5 | 1.08× | 7.50× |  |
