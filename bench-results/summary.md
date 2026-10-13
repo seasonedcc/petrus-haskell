@@ -42,7 +42,7 @@ lists the files whose package sources have changed since.
 | `petrus-engine-file` | [RESULTS.md](../packages/petrus-engine-file/bench/RESULTS.md) | `6be7b9a` | 19 | 1.29× | 8.90× |  |
 | `petrus-engine-postgres` | [RESULTS.md](../packages/petrus-engine-postgres/bench/RESULTS.md) | `f87908d` | 5 | 1.10× | 13.2× |  |
 | `petrus-engine-sqlite` | [RESULTS.md](../packages/petrus-engine-sqlite/bench/RESULTS.md) | `56217b2` | 4 | 1.38× | 8.31× |  |
-| `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | `5a73d7a` | 13 | 1.01× | 10.7× |  |
+| `petrus-execution` | [RESULTS.md](../packages/petrus-execution/bench/RESULTS.md) | `39455cb` | 17 | 0.91× | 8.76× | **below 1.0×**: sidecar/execute-round-trip; sidecar/handshake-round-trip |
 | `petrus-fabric` | [RESULTS.md](../packages/petrus-fabric/bench/RESULTS.md) | `e4a18a4` | 12 | 1.38× | 10.1× |  |
 | `petrus-history-postgres` | [RESULTS.md](../packages/petrus-history-postgres/bench/RESULTS.md) | `46473c2` | 7 | 1.18× | 2.01× |  |
 | `petrus-history-store` | [RESULTS.md](../packages/petrus-history-store/bench/RESULTS.md) | `25c66fa` | 14 | 1.13× | 12 748× |  |
@@ -62,4 +62,4 @@ lists the files whose package sources have changed since.
 | `petrus-telemetry-instrumentation` | [RESULTS.md](../packages/petrus-telemetry-instrumentation/bench/RESULTS.md) | `d85b420` | 4 | 2.50× | 9.00× |  |
 | `petrus-viewer-server` | [RESULTS.md](../packages/petrus-viewer-server/bench/RESULTS.md) | `37bf668` | 58 | 1.03× | 31.3× |  |
 
-46 results files; none with a row below 1.0×.
+46 results files; 1 with a row below 1.0×.

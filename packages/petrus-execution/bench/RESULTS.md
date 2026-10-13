@@ -1,6 +1,6 @@
 # petrus-execution benchmark results
 
-<!-- scripts/bench: measured sources 81d08c345ee431fe at 5a73d7a7f019 -->
+<!-- scripts/bench: measured sources 8270c85ccc5c738a at 39455cb7d122 -->
 
 The Haskell port compared with upstream Python Petrus (`petrus.motus.execution` /
 `_execution` at the pin in [UPSTREAM.md](../../../UPSTREAM.md)). Both harnesses run the same
@@ -42,28 +42,56 @@ shows the median of those per-round medians. A ratio above 1 means Haskell is fa
 
 ## Current figures
 
-Measured on 2026-10-12, 04:00–04:03 local (UTC-3), at commit `81bbdc5`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.63–2.68, by
+Measured on 2026-10-12, 23:31–23:33 local (UTC-3), at commit `d85b420`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 3.10–5.00, by
 
-    "$(scripts/upstream-python)" -B packages/petrus-execution/bench/compare.py WORKDIR 5
+    "$(scripts/upstream-python)" -B packages/petrus-execution/bench/compare.py WORKDIR 3
 
-Five rounds, alternating which harness goes first; each figure is the median of the per-round medians, "lowest per round" is the worst round's ratio, and the last column counts the rounds Haskell won. `archive/one-large/extract` (one 256 MiB file) and `sidecar/handshake-round-trip` are the thin rows: on the M4 the first lost one round of five and the second two. On the GitHub-hosted Linux runner `archive/one-large/extract` comes out a few percent behind Python (58.7 ms against 56.6 ms, 0.96×, with 64 KiB or 128 KiB writes alike). The time there is the kernel's: a bare 256 MiB `write(2)` loop on that runner takes 58–67 ms, so `scripts/bench-gate` checks `archive/medium/extract` instead. The tables in the sections below are earlier measurements.
+Three rounds, alternating which harness goes first; each figure is the median of the per-round medians, "lowest per round" is the worst round's ratio, and the last column counts the rounds Haskell won. On the GitHub-hosted Linux runner `archive/one-large/extract` comes out a few percent behind Python (58.7 ms against 56.6 ms, 0.96×, with 64 KiB or 128 KiB writes alike). The time there is the kernel's: a bare 256 MiB `write(2)` loop on that runner takes 58–67 ms, so `scripts/bench-gate` checks `archive/medium/extract` instead. The tables in the sections below are earlier measurements.
 
 | benchmark | Python (ms) | Haskell (ms) | Python / Haskell | lowest per round | Haskell ahead |
 |---|---:|---:|---:|---:|---:|
-| archive/many-small/pack+sha256 | 479.182 | 181.124 | 2.65x | 2.54x | 5 of 5 |
-| archive/many-small/validate | 89.914 | 29.433 | 3.05x | 3.01x | 5 of 5 |
-| archive/many-small/extract | 1190.466 | 924.546 | 1.29x | 1.26x | 5 of 5 |
-| archive/medium/pack+sha256 | 76.978 | 41.138 | 1.87x | 1.83x | 5 of 5 |
-| archive/medium/validate | 8.930 | 2.884 | 3.10x | 3.07x | 5 of 5 |
-| archive/medium/extract | 144.429 | 117.166 | 1.23x | 1.16x | 5 of 5 |
-| archive/one-large/pack+sha256 | 179.061 | 102.191 | 1.75x | 1.63x | 5 of 5 |
-| archive/one-large/validate | 0.075 | 0.007 | 10.66x | 9.26x | 5 of 5 |
-| archive/one-large/extract | 95.046 | 88.176 | 1.08x | 0.89x | 4 of 5 |
-| process/run-captured | 1.395 | 0.763 | 1.83x | 1.75x | 5 of 5 |
-| local/execute | 3.918 | 3.055 | 1.28x | 1.25x | 5 of 5 |
-| sidecar/handshake-round-trip | 0.031 | 0.031 | 1.01x | 0.90x | 3 of 5 |
-| sidecar/execute-round-trip | 4.836 | 4.659 | 1.04x | 1.02x | 5 of 5 |
+| archive/many-small/pack+sha256 | 499.764 | 184.277 | 2.71x | 2.66x | 3 of 3 |
+| archive/many-small/validate | 91.018 | 29.994 | 3.03x | 2.99x | 3 of 3 |
+| archive/many-small/extract | 1199.188 | 904.162 | 1.33x | 1.31x | 3 of 3 |
+| archive/medium/pack+sha256 | 89.469 | 42.853 | 2.09x | 2.05x | 3 of 3 |
+| archive/medium/validate | 9.239 | 2.840 | 3.25x | 2.53x | 3 of 3 |
+| archive/medium/extract | 182.094 | 133.110 | 1.37x | 1.37x | 3 of 3 |
+| archive/one-large/pack+sha256 | 198.565 | 105.138 | 1.89x | 1.79x | 3 of 3 |
+| archive/one-large/validate | 0.079 | 0.009 | 8.76x | 2.63x | 3 of 3 |
+| archive/one-large/extract | 202.839 | 169.896 | 1.19x | 0.93x | 2 of 3 |
+| process/run-captured | 1.450 | 0.784 | 1.85x | 1.73x | 3 of 3 |
+| local/execute | 4.748 | 3.258 | 1.46x | 1.25x | 3 of 3 |
+| sidecar/handshake-round-trip | 0.028 | 0.031 | 0.91x | 0.83x | 1 of 3 |
+| sidecar/execute-round-trip | 5.737 | 5.001 | 1.15x | 0.99x | 2 of 3 |
+
+The two sidecar rows are the thin ones, as in every run before this one:
+the sidecar is the shared Node process (below), and a handshake is one
+Unix-socket exchange of about 30 µs on both sides. In the three rounds
+above the handshake read 0.91× (Haskell ahead in 1 of 3) and the execute
+round trip 1.15× (2 of 3). Both were under 1.15×, so they got two more
+rounds of the rows without archive workloads (23:40, load average
+4.13–4.31), by
+
+    PETRUS_BENCH_ONLY=none "$(scripts/upstream-python)" -B packages/petrus-execution/bench/compare.py WORKDIR 2
+
+which gave:
+
+| benchmark | Python (ms) | Haskell (ms) | Python / Haskell | lowest per round | Haskell ahead |
+|---|---:|---:|---:|---:|---:|
+| process/run-captured | 1.347 | 0.789 | 1.71x | 1.62x | 2 of 2 |
+| local/execute | 3.831 | 3.204 | 1.20x | 1.16x | 2 of 2 |
+| sidecar/handshake-round-trip | 0.033 | 0.031 | 1.05x | 0.99x | 1 of 2 |
+| sidecar/execute-round-trip | 4.960 | 5.179 | 0.96x | 0.92x | 0 of 2 |
+
+Over the five rounds Haskell was ahead in 2 of 5 on each sidecar row: the
+handshake reads 0.91× and 1.05× in the two runs, the execute round trip
+1.15× and 0.96×. `compare.py` keeps only each run's medians, so the five
+rounds are not pooled into one figure. These rows are level, as the
+earlier runs below found (1.01× and 1.04× at `81bbdc5`, 1.02× and 1.00×
+on a quiet machine on 2026-10-11); they were not investigated further.
+`archive/one-large/extract` (one 256 MiB file) read 1.19× here, Haskell
+ahead in 2 of 3 rounds.
 
 ## Results
 
