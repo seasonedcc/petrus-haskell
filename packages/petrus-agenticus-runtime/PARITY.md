@@ -85,9 +85,10 @@ cd upstream/petrus
 
 ## Benchmarks
 
-See `bench/RESULTS.md`. A full three-phase run, which includes the fsyncs of
-the atomic `thread.json` saves, is 1.9 times faster than the reference. A
-projection decode and encode round trip is 1.4 times faster.
+See `bench/RESULTS.md`. Haskell is faster than the reference on both rows:
+a full three-phase run, which includes the fsyncs of the atomic
+`thread.json` saves, and a projection decode and encode round trip.
+RESULTS.md gives the figures.
 
 ## Host test counts
 

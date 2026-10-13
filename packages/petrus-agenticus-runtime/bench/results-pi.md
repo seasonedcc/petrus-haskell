@@ -1,6 +1,6 @@
 # Pi runtime benchmark results
 
-<!-- scripts/bench: measured sources 9a7d8d723c5eb474 at c0cb6cb59655 -->
+<!-- scripts/bench: measured sources 74c3be7661028153 at df073f3106e5 -->
 
 These are twin workloads, run by the tasty-bench runner `bench/Main.hs`
 and by scripts against the pinned reference (`upstream/petrus` @ 3f85fc2):
@@ -35,8 +35,8 @@ and by scripts against the pinned reference (`upstream/petrus` @ 3f85fc2):
 
 ## Current figures
 
-Measured on 2026-10-13, 01:06–01:12 local (UTC-3), at commit `c0cb6cb`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.05–3.65:
+Measured on 2026-10-13, 03:22–03:29 local (UTC-3), at commit `df073f3`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.45–3.82:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-agenticus-runtime 3 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py
@@ -51,6 +51,39 @@ analysis that came with them.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
+| `pi-a2-scripted-turn` | 8.65 ms | 28.3 ms | 3.27× | 3.04× | 3 of 3 | 9.42 ms, 8.62 ms, 8.65 ms | 28.7 ms, 28 ms, 28.3 ms |
+| `pi-start-frame-encode` | 3.72 µs | 7.71 µs | 2.07× | 2.05× | 3 of 3 | 3.72 µs, 3.67 µs, 3.75 µs | 7.71 µs, 7.52 µs, 7.77 µs |
+| `pi-tool-call-decode` | 296 ns | 1.82 µs | 6.16× | 6.08× | 3 of 3 | 300 ns, 296 ns, 294 ns | 1.82 µs, 1.81 µs, 1.83 µs |
+| `pi-session-validate` | 132 µs | 463 µs | 3.50× | 3.38× | 3 of 3 | 132 µs, 134 µs, 131 µs | 463 µs, 453 µs, 463 µs |
+| `pi-fingerprint` | 2 µs | 6.33 µs | 3.16× | 3.09× | 3 of 3 | 2.04 µs, 1.99 µs, 2 µs | 6.31 µs, 6.38 µs, 6.33 µs |
+| `pi-a2-fingerprint` | 2.09 µs | 6.09 µs | 2.92× | 2.88× | 3 of 3 | 2.08 µs, 2.09 µs, 2.11 µs | 6.02 µs, 6.15 µs, 6.09 µs |
+| `pi-native-turn` | 39.8 ms | 46.2 ms | 1.16× | 1.16× | 3 of 3 | 39.5 ms, 39.8 ms, 40.4 ms | 45.6 ms, 46.2 ms, 46.9 ms |
+| `pi-a5-turn` | 37.8 ms | 45.7 ms | 1.21× | 1.19× | 3 of 3 | 37.7 ms, 37.8 ms, 38.4 ms | 45.6 ms, 46.2 ms, 45.7 ms |
+| `pi-model-phase-turn` | 27.6 ms | 29.6 ms | 1.07× | 1.06× | 5 of 5 | 27.6 ms, 27.4 ms, 27.2 ms, 27.9 ms, 27.6 ms | 29.6 ms, 29.1 ms, 28.7 ms, 30.4 ms, 30.6 ms |
+| `pi-ledger-cycle` | 845 µs | 918 µs | 1.09× | 1.03× | 5 of 5 | 816 µs, 845 µs, 866 µs, 833 µs, 853 µs | 922 µs, 884 µs, 891 µs, 918 µs, 938 µs |
+
+The rows under 1.15× after the three repetitions (`pi-ledger-cycle`,
+`pi-model-phase-turn`, and `codex-a3-service-turn` and `amp-turn` in
+[results-hosts.md](results-hosts.md)) got two more interleaved
+repetitions of those rows alone, 03:59–04:02, load average 2.65–3.20:
+
+    scripts/bench-compare petrus-agenticus-runtime 2 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py --pattern '/pi-ledger-cycle/ || /codex-a3-service-turn/ || /amp-turn/ || /pi-model-phase-turn/' --python-only 'pi-ledger-cycle|codex-a3-service-turn|amp-turn|pi-model-phase-turn'
+
+Their lines above pool all five; Haskell was ahead in every repetition of
+every row. `pi-ledger-cycle` is four fsyncs, and its closeness to 1.0× is
+the device's noise (below). `pi-native-turn` cleared 1.15× after the
+three (39.8 ms against 46.2 ms, 1.16×).
+
+### 2026-10-13, at `c0cb6cb` (superseded)
+
+<!-- bench: superseded -->
+
+Measured on 2026-10-13, 01:06–01:12 local (UTC-3), with a 1-minute load
+average of 2.05–3.65: three interleaved repetitions of the command above, and two more of the rows under 1.15× (01:12–01:14, load average
+2.99–3.49), whose lines pooled all five. Superseded by the run at `df073f3` above.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
 | `pi-a2-scripted-turn` | 8.77 ms | 28.1 ms | 3.21× | 3.11× | 3 of 3 | 8.77 ms, 9.1 ms, 8.65 ms | 28.1 ms, 28.3 ms, 28 ms |
 | `pi-start-frame-encode` | 3.7 µs | 7.68 µs | 2.07× | 2.05× | 3 of 3 | 3.66 µs, 3.7 µs, 3.73 µs | 7.7 µs, 7.68 µs, 7.63 µs |
 | `pi-tool-call-decode` | 310 ns | 1.84 µs | 5.95× | 5.87× | 3 of 3 | 310 ns, 310 ns, 310 ns | 1.86 µs, 1.84 µs, 1.82 µs |
@@ -62,17 +95,6 @@ analysis that came with them.
 | `pi-model-phase-turn` | 27.4 ms | 29 ms | 1.06× | 1.02× | 5 of 5 | 27.2 ms, 27.4 ms, 27.7 ms, 26.7 ms, 27.6 ms | 29 ms, 29 ms, 29.2 ms, 29.1 ms, 28.1 ms |
 | `pi-ledger-cycle` | 838 µs | 898 µs | 1.07× | 1.03× | 5 of 5 | 820 µs, 864 µs, 877 µs, 810 µs, 838 µs | 898 µs, 886 µs, 943 µs, 928 µs, 898 µs |
 
-The rows under 1.15× after the three repetitions (`pi-native-turn`,
-`pi-model-phase-turn`, `pi-ledger-cycle`, and `codex-a3-service-turn` in
-[results-hosts.md](results-hosts.md)) got two more interleaved repetitions
-of those rows alone, 01:12–01:14, load average 2.99–3.49:
-
-    scripts/bench-compare petrus-agenticus-runtime 2 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py --pattern '/pi-ledger-cycle/ || /codex-a3-service-turn/ || /pi-native-turn/ || /pi-model-phase-turn/' --python-only 'pi-ledger-cycle|codex-a3-service-turn|pi-native-turn|pi-model-phase-turn'
-
-Their lines above pool all five; Haskell was ahead in every repetition of
-every row. `pi-ledger-cycle` is four fsyncs, and its closeness to 1.0× is
-the device's noise (below).
-
 ### 2026-10-12, at `13f7a84` (superseded)
 
 <!-- bench: superseded -->
@@ -81,7 +103,7 @@ Measured on 2026-10-12, 22:26–22:32 local (UTC-3), with a 1-minute load
 average of 2.03–3.60: three interleaved repetitions of the command above,
 and two more of the rows under 1.15× (22:36–22:38, load average
 2.34–3.21), whose lines pooled all five. Superseded by the run at
-`c0cb6cb` above.
+`c0cb6cb`.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|

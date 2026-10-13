@@ -1,6 +1,6 @@
 # agenticus-custody benchmark results
 
-<!-- scripts/bench: measured sources 58b8b899b48a81e2 at 13f7a84d2779 -->
+<!-- scripts/bench: measured sources 79b9a7598b6cb16d at df073f3106e5 -->
 
 These are twin workloads: `bench/Bench/Custody.hs` and
 `bench/python_custody.py`, which runs the pinned reference
@@ -31,23 +31,22 @@ with its reference pragmas (`synchronous = FULL`). A second set of rows uses
 
 ## Current figures
 
-Measured on 2026-10-12, 22:26–22:36 local (UTC-3), at commit `13f7a84`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.03–2.73: three
+Measured on 2026-10-13, 03:18–03:23 local (UTC-3), at commit `df073f3`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.72–3.47: three
 rounds, alternating which side goes first, of
 
     scripts/bench-run petrus-agenticus-core custody FULL 100 1000 +RTS -M2G -RTS
     (cd upstream/petrus && "$(../../scripts/upstream-python)" -B ../../packages/petrus-agenticus-core/bench/python_custody.py FULL 100 1000)
 
 Each figure is the median over the three rounds, in the environment listed
-under Results below. The first round's two halves ran six minutes apart
-(the petrus-agenticus-runtime benchmarks ran between them); the other two
-ran back to back. The `OFF` and N = 5000 rows were not rerun; the table
-there keeps them.
+under Results below; the three rounds ran back to back. The `OFF` and
+N = 5000 rows were not rerun; the table there keeps them. At `13f7a84`
+(2026-10-12) the same protocol read 4.42× and 7.48×.
 
 | sync | N | materialize p50 (Haskell / Python) | release p50 (Haskell / Python) | total (Haskell / Python) | Python / Haskell (total) | per round |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| FULL | 100 | 0.871 ms / 4.63 ms | 0.823 ms / 3.13 ms | 0.178 s / 0.786 s | 4.42× | 3.94×, 4.42×, 5.37× |
-| FULL | 1000 | 4.21 ms / 39.2 ms | 4.07 ms / 25.8 ms | 8.70 s / 65.1 s | 7.48× | 7.48×, 7.51×, 7.38× |
+| FULL | 100 | 0.756 ms / 4.78 ms | 0.734 ms / 3.22 ms | 0.152 s / 0.805 s | 5.30× | 5.20×, 5.44×, 5.15× |
+| FULL | 1000 | 4.37 ms / 39.1 ms | 4.31 ms / 25.6 ms | 8.90 s / 65.0 s | 7.30× | 7.65×, 7.10×, 7.30× |
 
 ## Results
 

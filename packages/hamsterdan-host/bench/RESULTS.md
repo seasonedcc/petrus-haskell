@@ -1,6 +1,6 @@
 # hamsterdan-host benchmarks
 
-<!-- scripts/bench: measured sources 3900d03c95343eb1 at 7180a9d79c23 -->
+<!-- scripts/bench: measured sources 7af76648f9c8b73c at df073f3106e5 -->
 
 These are the host's hot paths:
 
@@ -46,11 +46,11 @@ that the state interop tests use (`differential/state_reference.py`, and
 
 ## Current figures
 
-Measured on 2026-10-12, 20:22–20:25 local (UTC-3), at commit `d014e7c`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.01–2.58:
-five interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-13, 02:59–03:02 local (UTC-3), at commit `df073f3`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.58–3.36:
+three interleaved repetitions, alternating which side goes first, of
 
-    TMPDIR="$PWD/bench-results/tmp/htmp" scripts/bench-compare hamsterdan-host 5 --upstream hamsterdan --haskell-arg=-j1
+    TMPDIR="$PWD/bench-results/tmp/htmp" scripts/bench-compare hamsterdan-host 3 --upstream hamsterdan --haskell-arg=-j1
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
@@ -62,12 +62,12 @@ analysis that came with them.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
-| `webhook ingest.100 deliveries through POST /github/webhooks` | 4.12 ms | 10.3 ms | 2.50× | 2.39× | 5 of 5 | 4.12 ms, 4.1 ms, 4.03 ms, 4.13 ms, 4.3 ms | 10.3 ms, 10.3 ms, 10.4 ms, 10.4 ms, 10.3 ms |
-| `reconciliation.one webhook to quiescence on a fresh Instance` | 26.4 ms | 173 ms | 6.56× | 6.35× | 5 of 5 | 27.4 ms, 26.9 ms, 25.5 ms, 26.4 ms, 26.3 ms | 174 ms, 172 ms, 173 ms, 173 ms, 173 ms |
-| `agent turn.one webhook to quiescence through the scripted Pi agent` | 151 ms | 318 ms | 2.11× | 1.93× | 5 of 5 | 158 ms, 151 ms, 148 ms, 160 ms, 149 ms | 318 ms, 312 ms, 323 ms, 308 ms, 330 ms |
-| `gates.24 classifications (reply, reminder, dash x 8 outcomes)` | 2.44 µs | 54.7 µs | 22.40× | 22.05× | 5 of 5 | 2.44 µs, 2.47 µs, 2.44 µs, 2.48 µs, 2.44 µs | 54.3 µs, 55 µs, 54.7 µs, 54.7 µs, 55 µs |
-| `timers.rebuild from a 333-fact History` | 3.55 ms | 7.27 ms | 2.05× | 1.97× | 5 of 5 | 3.57 ms, 3.51 ms, 3.62 ms, 3.55 ms, 3.54 ms | 7.37 ms, 7.3 ms, 7.12 ms, 7.27 ms, 7.27 ms |
-| `timers.open a fresh store with no History` | 917 µs | 1.4 ms | 1.53× | 1.45× | 5 of 5 | 902 µs, 915 µs, 940 µs, 917 µs, 919 µs | 1.41 ms, 1.33 ms, 1.4 ms, 1.4 ms, 1.43 ms |
+| `webhook ingest.100 deliveries through POST /github/webhooks` | 4.42 ms | 10.8 ms | 2.44× | 2.25× | 3 of 3 | 4.42 ms, 4.79 ms, 4.19 ms | 11.1 ms, 10.8 ms, 10.3 ms |
+| `reconciliation.one webhook to quiescence on a fresh Instance` | 26.2 ms | 174 ms | 6.64× | 6.54× | 3 of 3 | 27.3 ms, 26.2 ms, 26.1 ms | 179 ms, 173 ms, 174 ms |
+| `agent turn.one webhook to quiescence through the scripted Pi agent` | 161 ms | 330 ms | 2.06× | 2.00× | 3 of 3 | 161 ms, 156 ms, 161 ms | 331 ms, 330 ms, 321 ms |
+| `gates.24 classifications (reply, reminder, dash x 8 outcomes)` | 2.48 µs | 55.2 µs | 22.31× | 22.31× | 3 of 3 | 2.48 µs, 2.48 µs, 2.44 µs | 55.2 µs, 55.5 µs, 54.9 µs |
+| `timers.rebuild from a 333-fact History` | 3.46 ms | 7.37 ms | 2.13× | 2.09× | 3 of 3 | 3.53 ms, 3.46 ms, 3.42 ms | 7.37 ms, 7.48 ms, 7.13 ms |
+| `timers.open a fresh store with no History` | 918 µs | 1.35 ms | 1.47× | 1.39× | 3 of 3 | 920 µs, 918 µs, 908 µs | 1.42 ms, 1.27 ms, 1.35 ms |
 
 ## Results
 

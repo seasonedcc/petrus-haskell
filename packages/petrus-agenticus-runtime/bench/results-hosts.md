@@ -1,6 +1,6 @@
 # Codex, Claude and Amp host benchmark results
 
-<!-- scripts/bench: measured sources 9a7d8d723c5eb474 at c0cb6cb59655 -->
+<!-- scripts/bench: measured sources 74c3be7661028153 at df073f3106e5 -->
 
 These are twin workloads, run by the tasty-bench runner `bench/Main.hs`
 (`bench/HostsBench.hs`) and by `bench/python_hosts.py` against the pinned
@@ -31,8 +31,8 @@ work: the code that runs once per provider event, frame or Turn.
 
 ## Current figures
 
-Measured on 2026-10-13, 01:06–01:12 local (UTC-3), at commit `c0cb6cb`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.05–3.65:
+Measured on 2026-10-13, 03:22–03:29 local (UTC-3), at commit `df073f3`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.45–3.82:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-agenticus-runtime 3 --python python_runner.py --python python_pi.py --python python_pi_a2.py --python python_hosts.py --python python_bench.py
@@ -44,6 +44,39 @@ figure is the median over the repetitions, and the ratio is Python ÷
 Haskell (above 1 means Haskell is faster). The same three repetitions measured the rows of [RESULTS.md](RESULTS.md) and [results-pi.md](results-pi.md). The
 tables in the sections below are earlier measurements, kept with the
 analysis that came with them.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
+| `codex-jsonl-parse` | 100 µs | 224 µs | 2.23× | 2.21× | 3 of 3 | 100 µs, 100 µs, 101 µs | 224 µs, 225 µs, 222 µs |
+| `codex-helper-parse` | 344 ns | 948 ns | 2.76× | 2.72× | 3 of 3 | 348 ns, 338 ns, 344 ns | 948 ns, 981 ns, 944 ns |
+| `codex-terminal-encode` | 973 ns | 2.62 µs | 2.70× | 2.70× | 3 of 3 | 974 ns, 973 ns, 962 ns | 2.66 µs, 2.62 µs, 2.61 µs |
+| `codex-terminal-parse` | 3.91 µs | 12.9 µs | 3.30× | 3.24× | 3 of 3 | 3.91 µs, 3.95 µs, 3.9 µs | 12.9 µs, 12.8 µs, 12.9 µs |
+| `claude-transcript-encode` | 133 µs | 546 µs | 4.09× | 4.06× | 3 of 3 | 135 µs, 133 µs, 132 µs | 549 µs, 545 µs, 546 µs |
+| `claude-transcript-decode` | 222 µs | 1.09 ms | 4.93× | 4.92× | 3 of 3 | 223 µs, 220 µs, 222 µs | 1.1 ms, 1.09 ms, 1.09 ms |
+| `claude-canonical-input` | 349 ns | 1.65 µs | 4.74× | 4.71× | 3 of 3 | 345 ns, 349 ns, 350 ns | 1.65 µs, 1.69 µs, 1.65 µs |
+| `claude-sanitize` | 61.4 µs | 127 µs | 2.06× | 2.02× | 3 of 3 | 60.7 µs, 62.6 µs, 61.4 µs | 127 µs, 127 µs, 127 µs |
+| `amp-stream-admit` | 63.8 µs | 419 µs | 6.57× | 6.49× | 3 of 3 | 64.5 µs, 63.8 µs, 63.8 µs | 419 µs, 422 µs, 419 µs |
+| `amp-final-text` | 61 µs | 113 µs | 1.86× | 1.85× | 3 of 3 | 60.3 µs, 61.1 µs, 61 µs | 113 µs, 113 µs, 114 µs |
+| `codex-turn` | 48.9 ms | 63.5 ms | 1.30× | 1.26× | 3 of 3 | 48.6 ms, 50.2 ms, 48.9 ms | 63.8 ms, 63.5 ms, 62.9 ms |
+| `codex-a3-service-turn` | 1.15 s | 1.27 s | 1.10× | 1.10× | 5 of 5 | 1.15 s, 1.14 s, 1.13 s, 1.17 s, 1.17 s | 1.26 s, 1.27 s, 1.26 s, 1.3 s, 1.31 s |
+| `claude-turn` | 8.66 ms | 11.5 ms | 1.33× | 1.32× | 3 of 3 | 8.66 ms, 8.72 ms, 8.31 ms | 11.6 ms, 11.5 ms, 11.1 ms |
+| `amp-turn` | 174 µs | 196 µs | 1.13× | 1.08× | 5 of 5 | 174 µs, 173 µs, 174 µs, 182 µs, 183 µs | 192 µs, 196 µs, 192 µs, 212 µs, 197 µs |
+
+`codex-a3-service-turn` (1.11×) and `amp-turn` (1.11×) read under 1.15×
+after the three repetitions, so they got two more of their own, with the
+close rows of [results-pi.md](results-pi.md) (which gives the command);
+their lines pool all five, and Haskell was ahead in every repetition of
+every row. The four whole-Turn rows are the ones the changes since
+`c0cb6cb` reach (SQLite binds, the Codex Gondolin path helper, the
+process exit helper); they read 1.30×, 1.10×, 1.33× and 1.13× here,
+against 1.31×, 1.12×, 1.33× and 1.15× at `c0cb6cb`.
+
+### 2026-10-13, at `c0cb6cb` (superseded)
+
+<!-- bench: superseded -->
+
+Measured on 2026-10-13, 01:06–01:12 local (UTC-3), with a 1-minute load
+average of 2.05–3.65: three interleaved repetitions of the command above, and two more of `codex-a3-service-turn`, whose line pooled all five. Superseded by the run at `df073f3` above.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
@@ -62,12 +95,6 @@ analysis that came with them.
 | `claude-turn` | 8.39 ms | 11.2 ms | 1.33× | 1.33× | 3 of 3 | 8.31 ms, 8.39 ms, 8.43 ms | 11.1 ms, 11.3 ms, 11.2 ms |
 | `amp-turn` | 167 µs | 193 µs | 1.15× | 1.13× | 3 of 3 | 165 µs, 167 µs, 171 µs | 196 µs, 193 µs, 193 µs |
 
-`codex-a3-service-turn` read 1.12× after the three repetitions, under
-1.15×, so it got two more of its own (with the close rows of
-[results-pi.md](results-pi.md), which gives the command); its line pools
-all five (medians 1,137 ms against 1,271 ms). `amp-turn` (167.3 µs against
-193.1 µs, 1.154×) cleared 1.15× after the three.
-
 ### 2026-10-12, at `13f7a84` (superseded)
 
 <!-- bench: superseded -->
@@ -75,7 +102,7 @@ all five (medians 1,137 ms against 1,271 ms). `amp-turn` (167.3 µs against
 Measured on 2026-10-12, 22:26–22:32 local (UTC-3), with a 1-minute load
 average of 2.03–3.60: three interleaved repetitions of the command above,
 and two more of `codex-a3-service-turn`, whose line pooled all five.
-Superseded by the run at `c0cb6cb` above.
+Superseded by the run at `c0cb6cb`.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|

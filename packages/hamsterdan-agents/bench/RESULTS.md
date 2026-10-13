@@ -1,6 +1,6 @@
 # hamsterdan-agents benchmarks
 
-<!-- scripts/bench: measured sources e5b795610d0b1e87 at fcc77016965a -->
+<!-- scripts/bench: measured sources ca8d1dc368ae45e0 at df073f3106e5 -->
 
 These are the agent adapter's hot paths:
 
@@ -32,11 +32,11 @@ its repository with fixed identities and dates
 
 ## Current figures
 
-Measured on 2026-10-12, 21:09–21:11 local (UTC-3), at commit `1427bb8`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 3.07–3.84:
-five interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-13, 02:47–02:50 local (UTC-3), at commit `df073f3`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 3.13–3.65:
+three interleaved repetitions, alternating which side goes first, of
 
-    TMPDIR="$PWD/bench-results/tmp" scripts/bench-compare hamsterdan-agents 5 --haskell-arg=-j1 --twin '"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-agents/bench/bench.py'
+    TMPDIR="$PWD/bench-results/tmp" scripts/bench-compare hamsterdan-agents 3 --haskell-arg=-j1 --twin '"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-agents/bench/bench.py'
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
@@ -48,26 +48,31 @@ analysis that came with them.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
-| `agents.prompt/encode a review prompt` | 9.5 µs | 31.7 µs | 3.34× | 3.23× | 5 of 5 | 9.27 µs, 9.52 µs, 9.86 µs, 9.45 µs, 9.5 µs | 31.3 µs, 31.7 µs, 31.8 µs, 31.4 µs, 31.7 µs |
-| `agents.result/parse and validate an 8-finding review result` | 25.9 µs | 47.7 µs | 1.84× | 1.81× | 5 of 5 | 25.4 µs, 25.3 µs, 26.3 µs, 26 µs, 25.9 µs | 47.5 µs, 47.7 µs, 47.6 µs, 48 µs, 48.1 µs |
-| `agents.archive/admit a 200-file settled workspace archive` | 613 µs | 3.26 ms | 5.32× | 5.22× | 5 of 5 | 606 µs, 609 µs, 613 µs, 627 µs, 613 µs | 3.26 ms, 3.26 ms, 3.29 ms, 3.27 ms, 3.26 ms |
-| `agents.keys/seal and open connection state` | 38.9 µs | 40.5 µs | 1.04× | 1.02× | 5 of 5 | 39.1 µs, 38.8 µs, 39.3 µs, 38.8 µs, 38.9 µs | 40.1 µs, 40.4 µs, 40.5 µs, 41.2 µs, 40.6 µs |
-| `agents.routes/claim and settle one operation` | 98.8 µs | 169 µs | 1.71× | 1.66× | 5 of 5 | 99.1 µs, 101 µs, 97.1 µs, 98.8 µs, 97.3 µs | 168 µs, 168 µs, 171 µs, 169 µs, 170 µs |
-| `agents.agent turn/one scripted Pi review through the Pi native runner` | 123 ms | 129 ms | 1.05× | 1.02× | 5 of 5 | 117 ms, 125 ms, 120 ms, 125 ms, 123 ms | 130 ms, 128 ms, 128 ms, 136 ms, 129 ms |
+| `agents.prompt/encode a review prompt` | 9.77 µs | 31.5 µs | 3.22× | 3.21× | 3 of 3 | 9.77 µs, 9.85 µs, 9.59 µs | 31.4 µs, 31.8 µs, 31.5 µs |
+| `agents.result/parse and validate an 8-finding review result` | 26.4 µs | 48 µs | 1.82× | 1.81× | 3 of 3 | 26.4 µs, 25.9 µs, 26.4 µs | 48.4 µs, 48 µs, 47.8 µs |
+| `agents.archive/admit a 200-file settled workspace archive` | 621 µs | 3.25 ms | 5.23× | 5.15× | 3 of 3 | 621 µs, 632 µs, 607 µs | 3.25 ms, 3.25 ms, 3.22 ms |
+| `agents.keys/seal and open connection state` | 39.3 µs | 40.5 µs | 1.03× | 1.00× | 4 of 5 | 39.3 µs, 38.8 µs, 39 µs, 39.6 µs, 40.5 µs | 39.5 µs, 44.5 µs, 42 µs, 40.4 µs, 40.5 µs |
+| `agents.routes/claim and settle one operation` | 99.8 µs | 169 µs | 1.70× | 1.70× | 3 of 3 | 97 µs, 103 µs, 99.8 µs | 169 µs, 177 µs, 169 µs |
+| `agents.agent turn/one scripted Pi review through the Pi native runner` | 122 ms | 131 ms | 1.07× | 1.02× | 5 of 5 | 117 ms, 122 ms, 116 ms, 128 ms, 126 ms | 131 ms, 132 ms, 132 ms, 130 ms, 130 ms |
 
-Haskell was ahead in every repetition of every row. The two closest rows
-are `keys` and the agent turn.
+The two rows under 1.15× after the three repetitions, `keys` and the
+agent turn, got two more of their own (03:54–03:55, load average
+3.40–3.98, the same command with `2 --pattern '/keys/ || /agent turn/'`);
+their lines pool all five. Haskell was ahead in every repetition of every
+other row, and in 5 of 5 of the agent turn; `keys` was level in one
+repetition (40.5 µs on both sides) and ahead in the other four.
 
-The agent turn reads 1.05× here (123 ms against 129 ms; lowest repetition
-1.02×), against 1.10× at `2ee3287` (19:22–19:24, load 3.25–3.86, five
+The agent turn reads 1.07× here (122 ms against 131 ms; lowest repetition
+1.02×), against 1.05× at `1427bb8` (five repetitions, 123 ms against
+129 ms), 1.10× at `2ee3287` (19:22–19:24, load 3.25–3.86, five
 repetitions: 125 ms against 138 ms) and 1.16× in the table at `81bbdc5`
 (04:36–04:37, load 2.32–2.76, three repetitions: 109 ms against 126 ms).
-The Haskell side has read 117–127 ms in every repetition since, at a higher
+The Haskell side has read 116–128 ms in every repetition since, at a higher
 load than then; the row drives a scripted Pi review through the native
 runner, with a Git clone and the runtime's stores, so it is as much
 process start-up and file-system work as code.
 
-The `keys` row is close to level (1.04×; 1.02× at `2ee3287` and at `81bbdc5`), and its
+The `keys` row is close to level (1.03×; 1.04× at `1427bb8`, 1.02× at `2ee3287` and at `81bbdc5`), and its
 Haskell figure is higher than the 31.4 µs of the table below. Most of that
 is where the row's key files live, not the code: the row seals connection
 state into files under `TMPDIR`, which this run pointed into the checkout.

@@ -1,6 +1,6 @@
 # petrus-sqlite benchmarks
 
-<!-- scripts/bench: measured sources db5a903955267dac at 7d1b80ce6e49 -->
+<!-- scripts/bench: measured sources 39e2776408913fd1 at df073f3106e5 -->
 
 Python figures time the upstream code path named in `bench/python_bench.py`;
 Haskell figures are tasty-bench means of `bench/Main.hs`, which uses the same
@@ -16,33 +16,37 @@ Haskell was ahead in every repetition of both rows (below).
 
 ## Current figures
 
-- Date: 2026-10-12, 20:25–20:28 local (UTC-3), at commit `7180a9d`
-- Machine: Darwin arm64, Apple M4; 1-minute load average 2.25–3.49 around
+- Date: 2026-10-13, 03:46–03:48 and 04:06 local (UTC-3), at commit `df073f3`
+- Machine: Darwin arm64, Apple M4; 1-minute load average 2.63–3.18 around
   the runs
 - Haskell: GHC 9.10.3 (-O2), tasty-bench mean in wall-clock time,
   `--stdev 5`, `+RTS -M2G -RTS`; the two `tx` rows use the twin protocol
   (below)
 - Python: CPython 3.14.6 (upstream venv), median of 10 timed batches of 0.2 s
   (scripts/bench_timing.py)
-- Interleaved by `scripts/bench-compare petrus-sqlite 5`, alternating which
-  side goes first. The figures are the medians of the 5 repetitions; the
-  last columns give each repetition and the repetitions in which Haskell
-  was faster.
+- Interleaved by `scripts/bench-compare petrus-sqlite 3`, alternating which
+  side goes first, and, for the two `tx` rows (under 1.15× after the three),
+  two more repetitions of those rows alone (`scripts/bench-compare
+  petrus-sqlite 2 --pattern tx --python-only '^tx\.'`). The figures are the
+  medians of the repetitions (five for the `tx` rows, three for the
+  others); the last columns give each repetition and the repetitions in
+  which Haskell was faster.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
-| `tx.immediate-insert-commit` | 32.4 µs | 33.3 µs | 1.03× | 1.01× | 5 of 5 | 32.3 µs, 32.2 µs, 32.4 µs, 33.1 µs, 32.8 µs | 34.2 µs, 33.8 µs, 33.1 µs, 33.3 µs, 33.2 µs |
-| `tx.immediate-insert-100` | 303 µs | 320 µs | 1.06× | 0.92× | 3 of 5 | 327 µs, 292 µs, 303 µs, 294 µs, 336 µs | 320 µs, 373 µs, 326 µs, 314 µs, 310 µs |
-| `connect.local-dispatch-profile` | 47 µs | 56.2 µs | 1.19× | 1.18× | 5 of 5 | 47.8 µs, 47 µs, 47 µs, 47.3 µs, 46.8 µs | 58.5 µs, 55.5 µs, 56.2 µs, 55.8 µs, 56.5 µs |
-| `query.select-by-key` | 1.2 µs | 1.64 µs | 1.36× | 1.35× | 5 of 5 | 1.21 µs, 1.18 µs, 1.21 µs, 1.2 µs, 1.19 µs | 1.66 µs, 1.64 µs, 1.63 µs, 1.65 µs, 1.63 µs |
-| `query.select-1000` | 350 µs | 432 µs | 1.24× | 1.23× | 5 of 5 | 351 µs, 351 µs, 350 µs, 349 µs, 349 µs | 432 µs, 435 µs, 431 µs, 430 µs, 432 µs |
-| `schema.normalize-ddl` | 2.72 µs | 5.06 µs | 1.86× | 1.84× | 5 of 5 | 2.74 µs, 2.68 µs, 2.7 µs, 2.72 µs, 2.74 µs | 5.09 µs, 5.06 µs, 5.14 µs, 5.05 µs, 5.04 µs |
-| `fence.acquire-release` | 30.1 µs | 37.3 µs | 1.24× | 1.19× | 5 of 5 | 31.5 µs, 29.7 µs, 29.7 µs, 30.1 µs, 30.8 µs | 37.3 µs, 37.3 µs, 37.2 µs, 37.4 µs, 37.5 µs |
+| `tx.immediate-insert-commit` | 33.2 µs | 35.6 µs | 1.07× | 0.91× | 4 of 5 | 32.7 µs, 33.2 µs, 37.3 µs, 32.4 µs, 35.4 µs | 35.6 µs, 37.3 µs, 34.1 µs, 33.7 µs, 38.3 µs |
+| `tx.immediate-insert-100` | 327 µs | 327 µs | 1.00× | 0.84× | 3 of 5 | 323 µs, 373 µs, 309 µs, 327 µs, 341 µs | 347 µs, 315 µs, 327 µs, 350 µs, 321 µs |
+| `connect.local-dispatch-profile` | 47.3 µs | 56.3 µs | 1.19× | 1.17× | 3 of 3 | 48.3 µs, 47.2 µs, 47.3 µs | 56.3 µs, 56 µs, 56.9 µs |
+| `query.select-by-key` | 1.22 µs | 1.64 µs | 1.35× | 1.33× | 3 of 3 | 1.24 µs, 1.2 µs, 1.22 µs | 1.64 µs, 1.63 µs, 1.67 µs |
+| `query.select-1000` | 352 µs | 438 µs | 1.24× | 1.23× | 3 of 3 | 350 µs, 352 µs, 352 µs | 438 µs, 441 µs, 434 µs |
+| `schema.normalize-ddl` | 2.71 µs | 5.09 µs | 1.88× | 1.85× | 3 of 3 | 2.72 µs, 2.7 µs, 2.71 µs | 5.03 µs, 5.09 µs, 5.15 µs |
+| `fence.acquire-release` | 29.9 µs | 37.6 µs | 1.26× | 1.22× | 3 of 3 | 30.7 µs, 29.8 µs, 29.9 µs | 37.6 µs, 37.4 µs, 37.6 µs |
 
-Haskell is ahead in every repetition of every row but 100 inserts. The two
-transaction rows are `fsync`-bound and level: the commit row 1.03× (5 of 5)
-and 100 inserts 1.06× (3 of 5, 0.92× in the slowest repetition). The same
-protocol at `fae8539` (finished 17:39, load 2.24–2.58), before petrus-json's
+Haskell is ahead in every repetition of every row but the two transaction
+rows, which are `fsync`-bound and level: the commit row 1.07× (4 of 5,
+0.91× in the slowest repetition) and 100 inserts 1.00× (327 µs on both
+sides, 3 of 5, 0.84× in the slowest). The run at `7180a9d` read 1.03×
+(5 of 5) and 1.06× (3 of 5). The same protocol at `fae8539` (finished 17:39, load 2.24–2.58), before petrus-json's
 duplicate pre-check came back, read 1.03× (5 of 5) and 1.02× (2 of 5), and
 every other row within 4% of this table.
 

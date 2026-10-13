@@ -1,6 +1,6 @@
 # hamsterdan-operator benchmarks
 
-<!-- scripts/bench: measured sources 002f92d8ae3993b8 at 1d052836f8ca -->
+<!-- scripts/bench: measured sources 6c62304c8824cb7f at df073f3106e5 -->
 
 Seven workloads, in two shapes, all timed by wall clock (monotonic) on
 both sides.
@@ -50,22 +50,22 @@ in-process row.
 
 ## Current figures
 
-Measured on 2026-10-12, 21:57–21:58 local (UTC-3), at commit `1d05283`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 1.28–2.31, by
+Measured on 2026-10-13, 03:02–03:04 local (UTC-3), at commit `df073f3` (after the operator moved onto petrus-json's shared Python value model), on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.64–2.88, by
 
     scripts/bench-run hamsterdan-operator --runs 21 +RTS -M2G -RTS
 
-One run of the harness: each cell is the median of 21 runs (210 for the in-process rows), the two sides interleaved, with the minimum in parentheses; the last column counts the runs in which Haskell was faster than the Python run paired with it. `qualification-setup` stays close to 1.0× (1.02×, Haskell ahead in 119 of 210), as in the seven-run table below and for the reason given under it. The hero-review `inspect` reads 1.19× (152 of 210), against 1.50× at `81bbdc5` (649 µs then, 781 µs now): since then the operator reads its JSON with petrus-json's plain `loadsValue` instead of its own fast path (`d354c96`; 1.37× against CPython when that change was measured). A shorter run of the same harness just before (21:37–21:38, `--runs 11`) read 1.19× and 1.03× for the two rows. The tables in the sections below are earlier measurements.
+One run of the harness: each cell is the median of 21 runs (210 for the in-process rows), the two sides interleaved, with the minimum in parentheses; the last column counts the runs in which Haskell was faster than the Python run paired with it. `qualification-setup` stays close to 1.0× (1.04×, Haskell ahead in 159 of 210; 1.02× at `1d05283`), as in the seven-run table below and for the reason given under it. The hero-review `inspect` reads 1.15× (148 of 210; 863 µs against 989 µs), against 1.19× at `1d05283` (781 µs against 926 µs) and 1.50× at `81bbdc5` (649 µs): since `81bbdc5` the operator reads its JSON with petrus-json's plain `loadsValue` instead of its own fast path (`d354c96`; 1.37× against CPython when that change was measured). In this run both sides of that row read slower than at `1d05283`, Haskell by 10% and Python by 7%. The tables in the sections below are earlier measurements.
 
 | Workload | Shape | Haskell median (min) | Python median (min) | Python / Haskell | Haskell ahead |
 | --- | --- | ---: | ---: | ---: | ---: |
-| `--help` | CLI (fresh process) | 21.16 ms (16.73 ms) | 675.86 ms (652.35 ms) | 31.95× | 21 of 21 |
-| `preflight` | CLI (fresh process) | 130.95 ms (117.74 ms) | 805.98 ms (788.64 ms) | 6.15× | 21 of 21 |
-| `inspect --pr 7 --expect-hero-review` (25 fake `gh` calls) | CLI (fresh process) | 589.67 ms (578.07 ms) | 1.29 s (1.27 s) | 2.19× | 21 of 21 |
-| inspect, hero review (200 comments, 20 runs of 30 jobs) | in process | 781.0 µs (691.0 µs) | 925.5 µs (889.7 µs) | 1.19× | 152 of 210 |
-| inspect-authority (40 rules, 99 reviews, 100 threads) | in process | 85.0 µs (76.0 µs) | 146.6 µs (130.7 µs) | 1.72× | 210 of 210 |
-| Git ref projection parse (2000 refs) | in process | 918.0 µs (827.0 µs) | 1.75 ms (1.62 ms) | 1.90× | 210 of 210 |
-| qualification-setup success path (scripted Git and gh) | in process | 965.0 µs (817.0 µs) | 988.3 µs (862.8 µs) | 1.02× | 119 of 210 |
+| `--help` | CLI (fresh process) | 21.46 ms (16.41 ms) | 699.50 ms (691.80 ms) | 32.60× | 21 of 21 |
+| `preflight` | CLI (fresh process) | 134.84 ms (120.10 ms) | 820.08 ms (813.92 ms) | 6.08× | 21 of 21 |
+| `inspect --pr 7 --expect-hero-review` (25 fake `gh` calls) | CLI (fresh process) | 596.41 ms (580.72 ms) | 1.34 s (1.30 s) | 2.24× | 21 of 21 |
+| inspect, hero review (200 comments, 20 runs of 30 jobs) | in process | 863.0 µs (747.0 µs) | 989.1 µs (958.4 µs) | 1.15× | 148 of 210 |
+| inspect-authority (40 rules, 99 reviews, 100 threads) | in process | 91.0 µs (80.0 µs) | 147.1 µs (133.6 µs) | 1.62× | 210 of 210 |
+| Git ref projection parse (2000 refs) | in process | 995.0 µs (916.0 µs) | 1.86 ms (1.74 ms) | 1.87× | 210 of 210 |
+| qualification-setup success path (scripted Git and gh) | in process | 926.0 µs (850.0 µs) | 965.5 µs (878.5 µs) | 1.04× | 159 of 210 |
 
 ## Results
 

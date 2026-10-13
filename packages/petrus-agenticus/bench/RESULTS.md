@@ -1,6 +1,6 @@
 # petrus-agenticus benchmark results
 
-<!-- scripts/bench: measured sources 5654849fcc483089 at c0cb6cb59655 -->
+<!-- scripts/bench: measured sources 4de0a148dddf6fdc at df073f3106e5 -->
 
 These are twin workloads: `bench/Bench/AgentNet.hs` (tasty-bench) and
 `bench/python_agent_net.py`, which runs the pinned reference
@@ -29,8 +29,8 @@ archive:
 
 ## Current figures
 
-Measured on 2026-10-13, 01:05–01:06 local (UTC-3), at commit `c0cb6cb`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 1.95–2.48:
+Measured on 2026-10-13, 03:17–03:19 local (UTC-3), at commit `df073f3`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.56–2.99:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-agenticus 3 --python python_agent_net.py --python python_retention.py
@@ -45,13 +45,29 @@ analysis that came with them.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
+| `agent-net.run-4-phases-6-tools` | 1.8 ms | 7.68 ms | 4.27× | 4.19× | 3 of 3 | 1.83 ms, 1.8 ms, 1.78 ms | 7.68 ms, 7.71 ms, 7.68 ms |
+| `agent-net.loop-state-roundtrip-16` | 32.7 µs | 127 µs | 3.90× | 3.84× | 3 of 3 | 32.7 µs, 32.3 µs, 33.2 µs | 129 µs, 127 µs, 127 µs |
+| `retention.decode-row-x1000` | 4.52 ms | 14.8 ms | 3.27× | 3.13× | 3 of 3 | 4.52 ms, 4.61 ms, 4.41 ms | 14.8 ms, 14.4 ms, 15.2 ms |
+| `retention.ledger-lookup-x200` | 2.5 ms | 4.62 ms | 1.85× | 1.78× | 3 of 3 | 2.5 ms, 2.52 ms, 2.41 ms | 4.62 ms, 4.49 ms, 4.99 ms |
+| `retention.ledger-recover-100` | 694 µs | 1.66 ms | 2.39× | 2.34× | 3 of 3 | 709 µs, 694 µs, 672 µs | 1.66 ms, 1.62 ms, 3.24 ms |
+
+Every row is at 1.78× or more in every repetition. `retention.ledger-recover-100`'s third Python repetition (3.24 ms) is an outlier, which the median leaves out.
+
+### 2026-10-13, at `c0cb6cb` (superseded)
+
+<!-- bench: superseded -->
+
+Measured on 2026-10-13, 01:05–01:06 local (UTC-3), with a 1-minute load
+average of 1.95–2.48: three interleaved repetitions of the command above.
+Superseded by the run at `df073f3` above.
+
+| Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
+|---|---:|---:|---:|---:|---:|---|---|
 | `agent-net.run-4-phases-6-tools` | 1.77 ms | 7.69 ms | 4.34× | 4.26× | 3 of 3 | 1.76 ms, 1.8 ms, 1.77 ms | 7.68 ms, 7.69 ms, 7.69 ms |
 | `agent-net.loop-state-roundtrip-16` | 32.7 µs | 127 µs | 3.90× | 3.86× | 3 of 3 | 32.6 µs, 32.7 µs, 32.7 µs | 127 µs, 126 µs, 128 µs |
 | `retention.decode-row-x1000` | 4.44 ms | 14.8 ms | 3.33× | 3.30× | 3 of 3 | 4.44 ms, 4.47 ms, 4.43 ms | 14.8 ms, 14.7 ms, 14.8 ms |
 | `retention.ledger-lookup-x200` | 2.39 ms | 4.59 ms | 1.92× | 1.90× | 3 of 3 | 2.36 ms, 2.4 ms, 2.39 ms | 4.59 ms, 4.55 ms, 4.64 ms |
 | `retention.ledger-recover-100` | 662 µs | 1.66 ms | 2.50× | 2.47× | 3 of 3 | 660 µs, 669 µs, 662 µs | 1.66 ms, 1.65 ms, 1.67 ms |
-
-Every row is at 1.90× or more in every repetition.
 
 ### 2026-10-12, at `561723e` (superseded)
 
@@ -59,7 +75,7 @@ Every row is at 1.90× or more in every repetition.
 
 Measured on 2026-10-12, 22:16–22:18 local (UTC-3), with a 1-minute load
 average of 1.87–2.01: three interleaved repetitions of the command above.
-Superseded by the run at `c0cb6cb` above.
+Superseded by the run at `c0cb6cb`.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|

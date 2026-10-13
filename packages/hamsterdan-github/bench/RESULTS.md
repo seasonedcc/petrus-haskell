@@ -1,6 +1,6 @@
 # hamsterdan-github benchmarks
 
-<!-- scripts/bench: measured sources 84386b4ee5a953b1 at d0584bd64a30 -->
+<!-- scripts/bench: measured sources 349f5a5cb0cf091a at df073f3106e5 -->
 
 These are the paths the GitHub boundary runs on every delivery and every
 provider call:
@@ -30,11 +30,11 @@ minted once before timing, so the `GET` measures the cached-token path.
 
 ## Current figures
 
-Measured on 2026-10-12, 21:11–21:23 local (UTC-3), at commit `fcc7701`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.18–3.42:
-five interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-13, 02:52–02:59 local (UTC-3), at commit `df073f3`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.58–3.67:
+three interleaved repetitions, alternating which side goes first, of
 
-    scripts/bench-compare hamsterdan-github 5 --twin '"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-github/bench/bench.py'
+    scripts/bench-compare hamsterdan-github 3 --twin '"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-github/bench/bench.py'
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
@@ -46,21 +46,26 @@ analysis that came with them.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
-| `webhook verify (HMAC-SHA256, 10 KB)` | 3.89 µs | 4.3 µs | 1.10× | 1.05× | 5 of 5 | 4.04 µs, 4.13 µs, 3.89 µs, 3.8 µs, 3.8 µs | 4.34 µs, 4.33 µs, 4.27 µs, 4.3 µs, 4.22 µs |
-| `webhook verify, key state per call` | 3.89 µs | — | — | — | — | 3.98 µs, 3.91 µs, 3.89 µs, 3.8 µs, 3.8 µs |  |
-| `webhook parse (issue_comment, 10 KB)` | 24.6 µs | 33.7 µs | 1.37× | 1.34× | 5 of 5 | 25.2 µs, 24.6 µs, 24.7 µs, 24.4 µs, 24.5 µs | 33.7 µs, 33.7 µs, 33.6 µs, 33.7 µs, 33.6 µs |
-| `observation encode (sorted JSON)` | 1.36 µs | 4.9 µs | 3.61× | 3.59× | 5 of 5 | 1.36 µs, 1.36 µs, 1.36 µs, 1.35 µs, 1.35 µs | 4.9 µs, 4.97 µs, 4.89 µs, 5 µs, 4.89 µs |
-| `webhook receive (verify, parse, SQLite insert)` | 66.9 µs | 79.5 µs | 1.19× | 1.17× | 5 of 5 | 68.3 µs, 68 µs, 66.9 µs, 66.8 µs, 64.6 µs | 81.8 µs, 79.5 µs, 78.9 µs, 80.1 µs, 79.1 µs |
-| `App JWT mint (RS256, PEM key)` | 485 µs | 44.6 ms | 91.96× | 91.35× | 5 of 5 | 489 µs, 482 µs, 485 µs, 485 µs, 481 µs | 44.7 ms, 44.6 ms, 44.6 ms, 44.5 ms, 44.6 ms |
-| `App JWT sign (RS256, parsed key)` | 451 µs | — | — | — | — | 451 µs, 450 µs, 451 µs, 452 µs, 451 µs |  |
-| `installation GET pull (cached token, mock network)` | 44.4 µs | 181 µs | 4.07× | 3.99× | 5 of 5 | 45.4 µs, 44.4 µs, 44.2 µs, 45.5 µs, 44.3 µs | 181 µs, 180 µs, 182 µs, 182 µs, 181 µs |
-| `gateway pull_request snapshot` | 1.75 µs | 2.33 µs | 1.33× | 1.32× | 5 of 5 | 1.75 µs, 1.75 µs, 1.75 µs, 1.75 µs, 1.75 µs | 2.35 µs, 2.31 µs, 2.36 µs, 2.33 µs, 2.31 µs |
-| `publisher lookup hit (100 comments)` | 11.5 µs | 25.6 µs | 2.23× | 2.18× | 5 of 5 | 11.5 µs, 11.6 µs, 11.5 µs, 11.5 µs, 11.7 µs | 25.6 µs, 25.7 µs, 25.9 µs, 25.4 µs, 25.6 µs |
+| `webhook verify (HMAC-SHA256, 10 KB)` | 3.98 µs | 4.33 µs | 1.09× | 1.07× | 5 of 5 | 3.98 µs, 3.86 µs, 4.01 µs, 3.97 µs, 4.04 µs | 4.34 µs, 4.31 µs, 4.29 µs, 4.35 µs, 4.33 µs |
+| `webhook verify, key state per call` | 3.94 µs | — | — | — | — | 3.94 µs, 3.85 µs, 3.97 µs |  |
+| `webhook parse (issue_comment, 10 KB)` | 24.6 µs | 33.6 µs | 1.37× | 1.36× | 3 of 3 | 24.8 µs, 24.6 µs, 24.6 µs | 33.6 µs, 33.7 µs, 33.5 µs |
+| `observation encode (sorted JSON)` | 1.35 µs | 4.89 µs | 3.62× | 3.55× | 3 of 3 | 1.37 µs, 1.34 µs, 1.35 µs | 4.87 µs, 4.89 µs, 4.92 µs |
+| `webhook receive (verify, parse, SQLite insert)` | 68.1 µs | 81 µs | 1.19× | 1.12× | 3 of 3 | 68.1 µs, 66.9 µs, 70.6 µs | 82.8 µs, 81 µs, 79.2 µs |
+| `App JWT mint (RS256, PEM key)` | 480 µs | 44.5 ms | 92.71× | 90.54× | 3 of 3 | 493 µs, 480 µs, 480 µs | 44.6 ms, 44.5 ms, 44.5 ms |
+| `App JWT sign (RS256, parsed key)` | 451 µs | — | — | — | — | 454 µs, 451 µs, 449 µs |  |
+| `installation GET pull (cached token, mock network)` | 44.6 µs | 180 µs | 4.03× | 4.01× | 3 of 3 | 44.6 µs, 44.7 µs, 44.6 µs | 180 µs, 180 µs, 179 µs |
+| `gateway pull_request snapshot` | 1.78 µs | 2.34 µs | 1.31× | 1.29× | 3 of 3 | 1.79 µs, 1.78 µs, 1.78 µs | 2.31 µs, 2.34 µs, 2.36 µs |
+| `publisher lookup hit (100 comments)` | 11.7 µs | 25.8 µs | 2.20× | 2.15× | 3 of 3 | 11.8 µs, 11.7 µs, 11.4 µs | 25.4 µs, 25.8 µs, 25.8 µs |
 
 Haskell was ahead in every repetition of every row with a Python twin; the
-closest is `webhook verify`, 1.10× (1.05× in the closest repetition), an
-HMAC over 10 KB that both sides hand to C. The Haskell parse (13.9 →
-24.6 µs) and the installation `GET` (27.1 → 44.4 µs) are slower than in the
+closest is `webhook verify`, 1.09× (1.07× in the closest repetition; 1.10×
+at `fcc7701`), an HMAC over 10 KB that both sides hand to C. It read 1.08×
+after the three repetitions, so it got two more of its own (03:55–04:00,
+load average 2.57–3.89, the same command with
+`2 --pattern '/webhook verify/'`), and its line pools all five; the
+Haskell-only row beside it keeps the three. `webhook receive`, the row
+with the SQLite insert, reads 1.19×, as at `fcc7701`. The Haskell parse (13.9 →
+24.6 µs) and the installation `GET` (27.1 → 44.6 µs) are slower than in the
 table below, measured two days earlier at commit `74e6b1e`; both still lead
 Python.
 

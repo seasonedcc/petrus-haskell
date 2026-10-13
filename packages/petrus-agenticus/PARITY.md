@@ -229,10 +229,11 @@ cd upstream/petrus
 
 ## Benchmarks
 
-See `bench/RESULTS.md`. Agent-as-a-Net end-to-end runs are 6.9 times faster
-than the reference, and LoopState round-trips are 2.4 times faster. The
-retention ledger decodes rows 1.7 times faster; `lookup` and `recover`,
-which are dominated by SQLite itself, are 1.1 and 1.5 times faster.
+See `bench/RESULTS.md`. Haskell is faster than the reference on every row:
+Agent-as-a-Net end-to-end runs, LoopState round-trips, and the retention
+ledger's row decoding, `lookup` and `recover`. The last two are dominated
+by SQLite itself, so their margins are the smallest. RESULTS.md gives the
+figures.
 
 ## Gaps
 

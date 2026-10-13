@@ -1,6 +1,6 @@
 # hamsterdan-testing benchmarks
 
-<!-- scripts/bench: measured sources 079e1c5ab975ba36 at 9da9efa829ab -->
+<!-- scripts/bench: measured sources 3afa5039dc56289f at df073f3106e5 -->
 
 Three groups of workloads, all timed in wall-clock time on both sides:
 
@@ -21,8 +21,8 @@ Every ratio is Python ÷ Haskell.
 
 ## Current figures
 
-Measured on 2026-10-12, 21:26–21:37 local (UTC-3), at commit `848eeba`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.02–3.25:
+Measured on 2026-10-13, 03:07–03:17 local (UTC-3), at commit `df073f3`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.47–3.33:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare hamsterdan-testing 3 --twin '"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-testing/bench/bench.py'
@@ -37,28 +37,28 @@ analysis that came with them.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
-| `oracle.evaluate every admitted corpus document (1658)` | 824 µs | 9.82 ms | 11.92× | 11.58× | 3 of 3 | 824 µs, 833 µs, 820 µs | 9.82 ms, 9.64 ms, 10 ms |
-| `oracle.load and evaluate every admitted corpus document (1658)` | 18.1 ms | 29.5 ms | 1.62× | 1.62× | 3 of 3 | 18.4 ms, 18.1 ms, 18 ms | 29.8 ms, 29.5 ms, 29.4 ms |
-| `oracle.evaluate_liveness x12 over every expectation (1658)` | 117 µs | 2.81 ms | 24.00× | 23.86× | 3 of 3 | 116 µs, 118 µs, 117 µs | 2.81 ms, 2.81 ms, 2.93 ms |
-| `journeys.clean_green` | 38.5 ms | 268 ms | 6.94× | 6.86× | 3 of 3 | 36.5 ms, 38.5 ms, 38.7 ms | 268 ms, 264 ms, 274 ms |
-| `journeys.first_attempt_flake` | 49.6 ms | 380 ms | 7.66× | 7.46× | 3 of 3 | 49.6 ms, 50 ms, 48.5 ms | 381 ms, 373 ms, 380 ms |
-| `journeys.persistent_ci_regression` | 53.7 ms | 427 ms | 7.94× | 7.67× | 3 of 3 | 55.4 ms, 53.7 ms, 51.7 ms | 424 ms, 427 ms, 431 ms |
-| `journeys.seeded_review_finding` | 34.8 ms | 222 ms | 6.37× | 6.24× | 3 of 3 | 34.8 ms, 34.8 ms, 35.2 ms | 226 ms, 222 ms, 219 ms |
-| `journeys.conversational_change` | 83.6 ms | 874 ms | 10.46× | 9.95× | 3 of 3 | 83.4 ms, 87.8 ms, 83.6 ms | 868 ms, 874 ms, 888 ms |
-| `journeys.agent_repair` | 784 ms | 1.69 s | 2.15× | 2.14× | 3 of 3 | 758 ms, 784 ms, 790 ms | 1.64 s, 1.7 s, 1.69 s |
-| `journeys.hero_review` | 35.3 ms | 230 ms | 6.51× | 6.35× | 3 of 3 | 36 ms, 33.4 ms, 35.3 ms | 229 ms, 230 ms, 233 ms |
-| `journeys.draft_ready` | 55.5 ms | 497 ms | 8.96× | 8.77× | 3 of 3 | 54 ms, 56.7 ms, 55.5 ms | 493 ms, 497 ms, 505 ms |
-| `journeys.stale_base_update` | 876 ms | 1.95 s | 2.22× | 2.21× | 3 of 3 | 876 ms, 872 ms, 898 ms | 1.94 s, 1.95 s, 1.98 s |
-| `journeys.true_conflict_resolution` | 931 ms | 1.95 s | 2.10× | 2.08× | 3 of 3 | 868 ms, 938 ms, 931 ms | 1.94 s, 1.95 s, 2 s |
-| `journeys.collaboration_approval` | 61.4 ms | 519 ms | 8.46× | 8.32× | 3 of 3 | 57.4 ms, 61.4 ms, 62.4 ms | 515 ms, 524 ms, 519 ms |
-| `world.author coverage-duplicate-delivery` | 174 ms | 493 ms | 2.83× | 2.80× | 3 of 3 | 174 ms, 174 ms, 178 ms | 489 ms, 493 ms, 501 ms |
-| `world.author authority-draft_resume` | 682 ms | 1.9 s | 2.79× | 2.77× | 3 of 3 | 682 ms, 687 ms, 665 ms | 1.9 s, 1.9 s, 1.96 s |
-| `world.author timer-draft_resume` | 764 ms | 2.19 s | 2.87× | 2.85× | 3 of 3 | 770 ms, 756 ms, 764 ms | 2.2 s, 2.15 s, 2.19 s |
-| `world.author git-after_acceptance` | 1.15 s | 3.22 s | 2.79× | 2.76× | 3 of 3 | 1.18 s, 1.15 s, 1.15 s | 3.26 s, 3.22 s, 3.2 s |
-| `world.replay coverage-duplicate-delivery` | 175 ms | 482 ms | 2.76× | 2.74× | 3 of 3 | 177 ms, 168 ms, 175 ms | 484 ms, 482 ms, 478 ms |
-| `world.replay authority-draft_resume` | 662 ms | 1.88 s | 2.84× | 2.81× | 3 of 3 | 670 ms, 662 ms, 662 ms | 1.88 s, 1.88 s, 1.88 s |
-| `world.replay timer-draft_resume` | 740 ms | 2.12 s | 2.87× | 2.79× | 3 of 3 | 730 ms, 740 ms, 760 ms | 2.12 s, 2.13 s, 2.12 s |
-| `world.replay git-after_acceptance` | 1.13 s | 3.17 s | 2.81× | 2.73× | 3 of 3 | 1.17 s, 1.1 s, 1.13 s | 3.19 s, 3.17 s, 3.17 s |
+| `oracle.evaluate every admitted corpus document (1658)` | 825 µs | 9.77 ms | 11.84× | 11.80× | 3 of 3 | 825 µs, 822 µs, 828 µs | 10.1 ms, 9.71 ms, 9.77 ms |
+| `oracle.load and evaluate every admitted corpus document (1658)` | 18.2 ms | 29.6 ms | 1.62× | 1.60× | 3 of 3 | 18 ms, 18.2 ms, 18.4 ms | 29.8 ms, 29.2 ms, 29.6 ms |
+| `oracle.evaluate_liveness x12 over every expectation (1658)` | 117 µs | 2.81 ms | 24.04× | 22.87× | 3 of 3 | 115 µs, 117 µs, 123 µs | 2.85 ms, 2.75 ms, 2.81 ms |
+| `journeys.clean_green` | 37.2 ms | 265 ms | 7.13× | 6.71× | 3 of 3 | 36.7 ms, 38.8 ms, 37.2 ms | 266 ms, 260 ms, 265 ms |
+| `journeys.first_attempt_flake` | 47.8 ms | 373 ms | 7.80× | 7.69× | 3 of 3 | 47.8 ms, 48.5 ms, 47 ms | 367 ms, 373 ms, 376 ms |
+| `journeys.persistent_ci_regression` | 49.9 ms | 422 ms | 8.47× | 8.38× | 3 of 3 | 49.9 ms, 49.3 ms, 50.9 ms | 422 ms, 421 ms, 426 ms |
+| `journeys.seeded_review_finding` | 33.1 ms | 220 ms | 6.64× | 6.32× | 3 of 3 | 33.1 ms, 34.4 ms, 32.5 ms | 220 ms, 217 ms, 220 ms |
+| `journeys.conversational_change` | 79.3 ms | 862 ms | 10.87× | 10.24× | 3 of 3 | 79.3 ms, 84 ms, 78.9 ms | 862 ms, 860 ms, 868 ms |
+| `journeys.agent_repair` | 752 ms | 1.68 s | 2.24× | 2.22× | 3 of 3 | 743 ms, 756 ms, 752 ms | 1.68 s, 1.68 s, 1.7 s |
+| `journeys.hero_review` | 32.9 ms | 224 ms | 6.80× | 6.74× | 3 of 3 | 33.1 ms, 32.9 ms, 32.8 ms | 223 ms, 224 ms, 225 ms |
+| `journeys.draft_ready` | 55.3 ms | 504 ms | 9.12× | 8.87× | 3 of 3 | 55.3 ms, 55.7 ms, 54.6 ms | 491 ms, 514 ms, 504 ms |
+| `journeys.stale_base_update` | 841 ms | 1.9 s | 2.26× | 2.23× | 3 of 3 | 841 ms, 849 ms, 812 ms | 1.9 s, 1.89 s, 1.93 s |
+| `journeys.true_conflict_resolution` | 873 ms | 1.9 s | 2.18× | 2.17× | 3 of 3 | 873 ms, 879 ms, 859 ms | 1.9 s, 1.91 s, 1.9 s |
+| `journeys.collaboration_approval` | 57.2 ms | 516 ms | 9.01× | 8.99× | 3 of 3 | 55.5 ms, 57.4 ms, 57.2 ms | 516 ms, 516 ms, 519 ms |
+| `world.author coverage-duplicate-delivery` | 172 ms | 489 ms | 2.85× | 2.81× | 3 of 3 | 174 ms, 170 ms, 172 ms | 489 ms, 484 ms, 493 ms |
+| `world.author authority-draft_resume` | 643 ms | 1.91 s | 2.97× | 2.93× | 3 of 3 | 656 ms, 626 ms, 643 ms | 1.92 s, 1.9 s, 1.91 s |
+| `world.author timer-draft_resume` | 761 ms | 2.16 s | 2.84× | 2.75× | 3 of 3 | 778 ms, 727 ms, 761 ms | 2.14 s, 2.16 s, 2.17 s |
+| `world.author git-after_acceptance` | 1.14 s | 3.22 s | 2.83× | 2.72× | 3 of 3 | 1.19 s, 1.13 s, 1.14 s | 3.23 s, 3.22 s, 3.19 s |
+| `world.replay coverage-duplicate-delivery` | 170 ms | 475 ms | 2.79× | 2.74× | 3 of 3 | 170 ms, 173 ms, 170 ms | 473 ms, 475 ms, 486 ms |
+| `world.replay authority-draft_resume` | 651 ms | 1.89 s | 2.90× | 2.87× | 3 of 3 | 651 ms, 625 ms, 654 ms | 1.9 s, 1.89 s, 1.88 s |
+| `world.replay timer-draft_resume` | 734 ms | 2.13 s | 2.90× | 2.82× | 3 of 3 | 750 ms, 728 ms, 734 ms | 2.12 s, 2.13 s, 2.14 s |
+| `world.replay git-after_acceptance` | 1.12 s | 3.23 s | 2.89× | 2.83× | 3 of 3 | 1.1 s, 1.12 s, 1.12 s | 3.23 s, 3.17 s, 3.23 s |
 
 ## Oracle
 

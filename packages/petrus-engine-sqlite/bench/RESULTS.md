@@ -1,6 +1,6 @@
 # SQLite Engine benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources 52c4a8cd84ff9341 at 56217b218176 -->
+<!-- scripts/bench: measured sources 6ba098dbc7d510c0 at df073f3106e5 -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` drive the same
 workloads through the public SQLite Engine composition: the reference's
@@ -28,11 +28,11 @@ The workloads:
 
 ## Current figures
 
-Measured on 2026-10-12, 20:11–20:13 local (UTC-3), at commit `25c66fa`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.27–3.00:
-five interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-13, 03:32–03:34 local (UTC-3), at commit `df073f3`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 3.02–3.76:
+three interleaved repetitions, alternating which side goes first, of
 
-    scripts/bench-compare petrus-engine-sqlite 5
+    scripts/bench-compare petrus-engine-sqlite 3
 
 Haskell figures are tasty-bench means in wall-clock time (`--stdev 5`,
 `+RTS -M2G`), the benchmark executable run directly in the package
@@ -44,10 +44,10 @@ analysis that came with them.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
-| `engine-sqlite.orders-small-sqlite` | 4.05 ms | 6.35 ms | 1.57× | 1.42× | 5 of 5 | 4.37 ms, 4.05 ms, 3.93 ms, 4.22 ms, 4 ms | 6.29 ms, 6.75 ms, 6.35 ms, 5.98 ms, 6.73 ms |
-| `engine-sqlite.orders-large-sqlite` | 181 ms | 904 ms | 5.00× | 4.74× | 5 of 5 | 181 ms, 182 ms, 177 ms, 192 ms, 180 ms | 904 ms, 913 ms, 897 ms, 910 ms, 902 ms |
-| `engine-sqlite.load-sqlite` | 14.1 ms | 117 ms | 8.31× | 8.17× | 5 of 5 | 14.1 ms, 14.1 ms, 14 ms, 14.3 ms, 14.2 ms | 117 ms, 116 ms, 117 ms, 117 ms, 117 ms |
-| `engine-sqlite.open-close` | 345 µs | 476 µs | 1.38× | 1.33× | 5 of 5 | 358 µs, 337 µs, 347 µs, 345 µs, 337 µs | 474 µs, 480 µs, 478 µs, 476 µs, 476 µs |
+| `engine-sqlite.orders-small-sqlite` | 4.13 ms | 6.9 ms | 1.67× | 1.50× | 3 of 3 | 4.3 ms, 4.08 ms, 4.13 ms | 6.9 ms, 6.12 ms, 7.35 ms |
+| `engine-sqlite.orders-large-sqlite` | 195 ms | 942 ms | 4.83× | 4.54× | 3 of 3 | 209 ms, 195 ms, 179 ms | 951 ms, 942 ms, 901 ms |
+| `engine-sqlite.load-sqlite` | 14.3 ms | 118 ms | 8.22× | 8.15× | 3 of 3 | 14.3 ms, 14.5 ms, 14.2 ms | 118 ms, 118 ms, 117 ms |
+| `engine-sqlite.open-close` | 334 µs | 478 µs | 1.43× | 1.42× | 3 of 3 | 334 µs, 337 µs, 331 µs | 480 µs, 478 µs, 476 µs |
 
 ## How to rerun
 

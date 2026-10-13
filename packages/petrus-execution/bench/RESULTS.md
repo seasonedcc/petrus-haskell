@@ -1,6 +1,6 @@
 # petrus-execution benchmark results
 
-<!-- scripts/bench: measured sources 3872db2894c56299 at 0d0154457f61 -->
+<!-- scripts/bench: measured sources 7cf3376d497fc91b at df073f3106e5 -->
 
 The Haskell port compared with upstream Python Petrus (`petrus.motus.execution` /
 `_execution` at the pin in [UPSTREAM.md](../../../UPSTREAM.md)). Both harnesses run the same
@@ -42,7 +42,59 @@ shows the median of those per-round medians. A ratio above 1 means Haskell is fa
 
 ## Current figures
 
-### The sidecar rows, 2026-10-13: the clock and the connect timer
+### 2026-10-13, at `df073f3`
+
+Measured on 2026-10-13, 03:33–03:36 local (UTC-3), at commit `df073f3`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 3.16–3.28, by
+
+    "$(scripts/upstream-python)" -B packages/petrus-execution/bench/compare.py WORKDIR 3
+
+Three rounds, alternating which harness goes first; each figure is the
+median of the per-round medians, "lowest per round" is the worst round's
+ratio, and the last column counts the rounds Haskell won. The archive rows:
+
+| benchmark | Python (ms) | Haskell (ms) | Python / Haskell | lowest per round | Haskell ahead |
+|---|---:|---:|---:|---:|---:|
+| archive/many-small/pack+sha256 | 495.149 | 190.441 | 2.60x | 2.46x | 3 of 3 |
+| archive/many-small/validate | 90.375 | 31.831 | 2.84x | 2.80x | 3 of 3 |
+| archive/many-small/extract | 1201.405 | 923.412 | 1.30x | 1.29x | 3 of 3 |
+| archive/medium/pack+sha256 | 88.091 | 43.084 | 2.04x | 1.73x | 3 of 3 |
+| archive/medium/validate | 9.003 | 2.936 | 3.07x | 2.76x | 3 of 3 |
+| archive/medium/extract | 158.343 | 118.602 | 1.34x | 1.11x | 3 of 3 |
+| archive/one-large/pack+sha256 | 188.843 | 105.820 | 1.78x | 1.68x | 3 of 3 |
+| archive/one-large/validate | 0.077 | 0.007 | 11.03x | 11.00x | 3 of 3 |
+| archive/one-large/extract | 155.169 | 110.464 | 1.40x | 1.18x | 3 of 3 |
+
+The rows without archive workloads read, in those three rounds, 1.81x
+(run-captured), 1.38x (local execute), 1.02x (handshake, 3 of 3) and 1.39x
+(execute round trip, 2 of 3, 0.92x at the lowest). The two sidecar rows
+were under 1.15×, so those rows got two more rounds (04:02, load average
+3.10–3.20), where the execute round trip read 0.96x (Haskell ahead in 0
+of 2) and the handshake 1.08x. `compare.py` keeps only each run's medians,
+so runs cannot be pooled; the rows were therefore measured again in five
+rounds of their own, 04:20 local, load average 3.67–3.89, by
+
+    PETRUS_BENCH_ONLY=none "$(scripts/upstream-python)" -B packages/petrus-execution/bench/compare.py WORKDIR 5
+
+which are the figures for those rows:
+
+| benchmark | Python (ms) | Haskell (ms) | Python / Haskell | lowest per round | Haskell ahead |
+|---|---:|---:|---:|---:|---:|
+| process/run-captured | 1.292 | 0.779 | 1.66x | 1.55x | 5 of 5 |
+| local/execute | 3.779 | 3.031 | 1.25x | 1.21x | 5 of 5 |
+| sidecar/handshake-round-trip | 0.031 | 0.031 | 1.01x | 0.97x | 4 of 5 |
+| sidecar/execute-round-trip | 4.994 | 4.772 | 1.05x | 1.00x | 4 of 5 |
+
+The sidecar rows are level, as in every run before (below): most of each
+round trip is the shared Node sidecar, and the execute round trip swings
+by several hundred microseconds between runs on either side. The change
+measured here (petrus-posix's `writeAll` and `linkAt` in extraction, and
+petrus-json's `pythonDict` in `mkCommand`) leaves the extract rows ahead of
+Python by 1.30–1.40x.
+
+### The sidecar rows, 2026-10-13, at `c0cb6cb`: the clock and the connect timer (superseded)
+
+<!-- bench: superseded -->
 
 Eleven alternating rounds of the rows without archive workloads on
 2026-10-12 (load average 2.5–3.3), by
@@ -95,9 +147,12 @@ With both changes, eleven alternating rounds at 00:05–00:06 on 2026-10-13
 The handshake is level with Python: about 31 µs on both sides, most of it
 the shared Node sidecar, with round-to-round swings of ±1.5 µs on either side
 that exceed the remaining difference. It was not investigated further. The
-archive rows below were not remeasured.
+archive rows below were not remeasured. Superseded by the run at `df073f3`
+above.
 
-### 2026-10-12, at `d85b420`: the archive rows
+### 2026-10-12, at `d85b420`: the archive rows (superseded)
+
+<!-- bench: superseded -->
 
 Measured on 2026-10-12, 23:31–23:33 local (UTC-3), at commit `d85b420`, on
 the Apple M4 (Darwin arm64) with a 1-minute load average of 3.10–5.00, by

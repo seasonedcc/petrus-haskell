@@ -1,6 +1,6 @@
 # hamsterdan-export benchmarks
 
-<!-- scripts/bench: measured sources 464dff816be9f578 at 75e8a1a090f9 -->
+<!-- scripts/bench: measured sources cee6eb0ca5216c2a at df073f3106e5 -->
 
 One export of pull request 7, from three state directories:
 
@@ -33,21 +33,21 @@ removed between runs, outside the timed region. Each cell is the median of
 
 ## Current figures
 
-Measured on 2026-10-12, 21:01–21:03 local (UTC-3), at commit `2cf4687`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.47–2.76, by
+Measured on 2026-10-13, 02:50–02:52 local (UTC-3), at commit `df073f3` (after `runExport` moved onto petrus-json's shared Python value model), on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.93–3.02, by
 
     scripts/bench-run hamsterdan-export --runs 21 +RTS -M2G -RTS
 
-Each cell is the median of 21 runs, interleaved as described above, with the minimum in parentheses; the last column counts the runs in which Haskell was faster than the Python run paired with it. The closest row is the host-driven state directory in process, 1.11× (Haskell ahead in 19 of 21; 1.16× at `a99bed8`, 19:08–19:09, and 1.08× at `81bbdc5`). The tables in the sections below are earlier measurements.
+Each cell is the median of 21 runs, interleaved as described above, with the minimum in parentheses; the last column counts the runs in which Haskell was faster than the Python run paired with it. The closest row is the host-driven state directory in process, 1.12× (Haskell ahead in 17 of 21; 1.11× at `2cf4687`, 1.16× at `a99bed8` and 1.08× at `81bbdc5`). The host-driven CLI row's Haskell median (27.2 ms, against 19.6 ms at `2cf4687`; minimum 16.0 ms) is process start-up under this run's load, not the export itself, whose in-process figure did not move. The large state directory in process reads 1.46×, against 1.61× at `2cf4687`: its Haskell median is 174.8 ms against 164.3 ms then, and Python's 255.6 ms against 264.2 ms. The tables in the sections below are earlier measurements.
 
 | State directory | Shape | Haskell median (min) | Python median (min) | Python / Haskell | Haskell ahead |
 | --- | --- | ---: | ---: | ---: | ---: |
-| fixture | CLI (fresh process) | 19.4 ms (16.3 ms) | 707.5 ms (697.6 ms) | 36.38× | 20 of 21 |
-| fixture | in process | 3.2 ms (2.8 ms) | 3.8 ms (3.4 ms) | 1.18× | 21 of 21 |
-| host-driven | CLI (fresh process) | 19.6 ms (14.4 ms) | 713.3 ms (704.5 ms) | 36.34× | 21 of 21 |
-| host-driven | in process | 6.6 ms (5.8 ms) | 7.3 ms (6.6 ms) | 1.11× | 19 of 21 |
-| large | CLI (fresh process) | 192.9 ms (164.1 ms) | 1.01 s (952.5 ms) | 5.22× | 21 of 21 |
-| large | in process | 164.3 ms (145.5 ms) | 264.2 ms (239.5 ms) | 1.61× | 21 of 21 |
+| fixture | CLI (fresh process) | 19.8 ms (14.7 ms) | 719.8 ms (701.3 ms) | 36.43× | 20 of 21 |
+| fixture | in process | 3.0 ms (2.7 ms) | 3.7 ms (3.5 ms) | 1.23× | 21 of 21 |
+| host-driven | CLI (fresh process) | 27.2 ms (16.0 ms) | 727.1 ms (707.2 ms) | 26.72× | 21 of 21 |
+| host-driven | in process | 6.4 ms (5.8 ms) | 7.2 ms (6.7 ms) | 1.12× | 17 of 21 |
+| large | CLI (fresh process) | 195.9 ms (169.7 ms) | 991.3 ms (948.0 ms) | 5.06× | 21 of 21 |
+| large | in process | 174.8 ms (149.3 ms) | 255.6 ms (233.9 ms) | 1.46× | 20 of 21 |
 
 ## Results
 

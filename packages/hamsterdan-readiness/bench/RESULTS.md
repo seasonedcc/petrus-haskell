@@ -1,6 +1,6 @@
 # hamsterdan-readiness benchmarks
 
-<!-- scripts/bench: measured sources 72511e79975802b6 at 848eeba6a706 -->
+<!-- scripts/bench: measured sources bb905d5b98e8ae09 at df073f3106e5 -->
 
 These are the paths the V5 net runs on every firing and every dashboard
 publication:
@@ -18,8 +18,8 @@ inputs before timing starts.
 
 ## Current figures
 
-Measured on 2026-10-12, 21:23–21:26 local (UTC-3), at commit `d0584bd`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.02–2.54:
+Measured on 2026-10-13, 03:04–03:07 local (UTC-3), at commit `df073f3`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.41–3.00:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare hamsterdan-readiness 3 --twin '"$(scripts/upstream-python hamsterdan)" -I -B packages/hamsterdan-readiness/bench/bench.py'
@@ -34,19 +34,19 @@ analysis that came with them.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
-| `folding.every corpus fold (3292 calls)` | 9.6 ms | 73.8 ms | 7.69× | 7.46× | 3 of 3 | 9.9 ms, 9.55 ms, 9.6 ms | 73.8 ms, 74 ms, 73 ms |
-| `folding.ci folds (177 calls)` | 342 µs | 2.88 ms | 8.42× | 8.41× | 3 of 3 | 343 µs, 342 µs, 336 µs | 2.89 ms, 2.88 ms, 2.88 ms |
-| `folding.conv folds (250 calls)` | 398 µs | 5.68 ms | 14.26× | 14.16× | 3 of 3 | 402 µs, 398 µs, 397 µs | 5.68 ms, 5.67 ms, 5.7 ms |
-| `folding.dash folds (441 calls)` | 578 µs | 5.82 ms | 10.05× | 10.05× | 3 of 3 | 578 µs, 579 µs, 572 µs | 5.82 ms, 5.84 ms, 5.81 ms |
-| `folding.esc folds (232 calls)` | 534 µs | 4.31 ms | 8.07× | 8.05× | 3 of 3 | 536 µs, 534 µs, 534 µs | 4.33 ms, 4.3 ms, 4.31 ms |
-| `folding.life folds (341 calls)` | 873 µs | 7.06 ms | 8.09× | 8.07× | 3 of 3 | 873 µs, 854 µs, 875 µs | 7.08 ms, 7.06 ms, 7.06 ms |
-| `folding.mut folds (246 calls)` | 545 µs | 4.61 ms | 8.45× | 8.43× | 3 of 3 | 544 µs, 545 µs, 546 µs | 4.62 ms, 4.61 ms, 4.6 ms |
-| `folding.ready folds (813 calls)` | 3.25 ms | 18.1 ms | 5.58× | 5.53× | 3 of 3 | 3.28 ms, 3.23 ms, 3.25 ms | 18.1 ms, 18 ms, 18.2 ms |
-| `folding.rem folds (298 calls)` | 1.15 ms | 10.9 ms | 9.47× | 9.30× | 3 of 3 | 1.17 ms, 1.13 ms, 1.15 ms | 10.9 ms, 10.8 ms, 10.9 ms |
-| `folding.review folds (391 calls)` | 1.48 ms | 11.8 ms | 7.98× | 7.85× | 3 of 3 | 1.48 ms, 1.5 ms, 1.46 ms | 11.9 ms, 11.8 ms, 11.8 ms |
-| `folding.startup folds (103 calls)` | 725 ns | 3 µs | 4.14× | 4.13× | 3 of 3 | 726 ns, 725 ns, 714 ns | 3 µs, 3 µs, 3 µs |
-| `board.render_board over every corpus log (1569 logs)` | 16.3 ms | 60.7 ms | 3.73× | 3.69× | 3 of 3 | 16.5 ms, 16.3 ms, 16.3 ms | 60.7 ms, 60.6 ms, 60.7 ms |
-| `board.gate_facts over every corpus log (1569 logs)` | 12.5 ms | 57.5 ms | 4.62× | 4.60× | 3 of 3 | 12.5 ms, 12.3 ms, 12.5 ms | 57.7 ms, 57.5 ms, 57.3 ms |
+| `folding.every corpus fold (3292 calls)` | 9.8 ms | 73.2 ms | 7.47× | 7.47× | 3 of 3 | 9.8 ms, 9.82 ms, 9.59 ms | 73.2 ms, 74.6 ms, 73.1 ms |
+| `folding.ci folds (177 calls)` | 337 µs | 2.88 ms | 8.55× | 8.55× | 3 of 3 | 343 µs, 337 µs, 332 µs | 2.97 ms, 2.88 ms, 2.88 ms |
+| `folding.conv folds (250 calls)` | 401 µs | 5.7 ms | 14.21× | 13.55× | 3 of 3 | 401 µs, 399 µs, 420 µs | 5.7 ms, 5.76 ms, 5.69 ms |
+| `folding.dash folds (441 calls)` | 578 µs | 5.82 ms | 10.07× | 10.07× | 3 of 3 | 578 µs, 578 µs, 571 µs | 5.87 ms, 5.82 ms, 5.78 ms |
+| `folding.esc folds (232 calls)` | 547 µs | 4.3 ms | 7.86× | 7.68× | 3 of 3 | 544 µs, 547 µs, 559 µs | 4.3 ms, 4.31 ms, 4.29 ms |
+| `folding.life folds (341 calls)` | 872 µs | 7.11 ms | 8.15× | 8.03× | 3 of 3 | 882 µs, 872 µs, 862 µs | 7.11 ms, 7.01 ms, 7.14 ms |
+| `folding.mut folds (246 calls)` | 547 µs | 4.58 ms | 8.37× | 8.20× | 3 of 3 | 559 µs, 547 µs, 540 µs | 4.59 ms, 4.58 ms, 4.54 ms |
+| `folding.ready folds (813 calls)` | 3.28 ms | 18.2 ms | 5.55× | 5.43× | 3 of 3 | 3.28 ms, 3.3 ms, 3.24 ms | 18.3 ms, 17.9 ms, 18.2 ms |
+| `folding.rem folds (298 calls)` | 1.15 ms | 10.7 ms | 9.33× | 9.31× | 3 of 3 | 1.15 ms, 1.15 ms, 1.13 ms | 10.8 ms, 10.7 ms, 10.7 ms |
+| `folding.review folds (391 calls)` | 1.49 ms | 11.8 ms | 7.88× | 7.85× | 3 of 3 | 1.49 ms, 1.5 ms, 1.46 ms | 11.8 ms, 11.8 ms, 11.8 ms |
+| `folding.startup folds (103 calls)` | 713 ns | 3 µs | 4.21× | 4.14× | 3 of 3 | 724 ns, 713 ns, 702 ns | 3 µs, 3 µs, 3 µs |
+| `board.render_board over every corpus log (1569 logs)` | 16.3 ms | 60.6 ms | 3.72× | 3.67× | 3 of 3 | 16.5 ms, 16.3 ms, 16.2 ms | 60.5 ms, 61.3 ms, 60.6 ms |
+| `board.gate_facts over every corpus log (1569 logs)` | 12.4 ms | 57.3 ms | 4.62× | 4.58× | 3 of 3 | 12.5 ms, 12.4 ms, 12.3 ms | 57.1 ms, 57.4 ms, 57.3 ms |
 
 ## Results
 

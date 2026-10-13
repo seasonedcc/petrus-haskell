@@ -1,6 +1,6 @@
 # fileVersion 2 benchmarks: Haskell vs petrus-engine
 
-<!-- scripts/bench: measured sources fc866794e24395b7 at 6be7b9ae133d -->
+<!-- scripts/bench: measured sources c915260f96bb147c at df073f3106e5 -->
 
 `bench/Main.hs` (tasty-bench) and `bench/python_bench.py` time the same steps
 on the same input texts. `bench/process_bench.py` times the format command
@@ -67,8 +67,8 @@ table is one Haskell run and the Python run that followed it.
 
 ## Current figures
 
-Measured on 2026-10-12, 23:02–23:05 local (UTC-3), at commit `f6aeabc`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 2.84–3.96:
+Measured on 2026-10-13, 03:28–03:31 local (UTC-3), at commit `df073f3`, on
+the Apple M4 (Darwin arm64) with a 1-minute load average of 2.79–3.40:
 three interleaved repetitions, alternating which side goes first, of
 
     scripts/bench-compare petrus-engine-file 3 --twin '"$(scripts/upstream-python petrus-engine)" -B packages/petrus-engine-file/bench/python_bench.py'
@@ -83,21 +83,21 @@ analysis that came with them.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
-| `chain-10.parse` | 17.8 µs | 48 µs | 2.70× | 2.64× | 3 of 3 | 17.9 µs, 17.8 µs, 17.3 µs | 48 µs, 47 µs, 48 µs |
-| `chain-10.to_json` | 32.8 µs | 292 µs | 8.90× | 8.63× | 3 of 3 | 34.1 µs, 32.8 µs, 32.3 µs | 294 µs, 288 µs, 292 µs |
-| `chain-10.format` | 51.7 µs | 351 µs | 6.79× | 6.67× | 3 of 3 | 51.7 µs, 51.9 µs, 50.6 µs | 351 µs, 346 µs, 355 µs |
-| `chain-10.load` | 65.2 µs | 176 µs | 2.70× | 2.58× | 3 of 3 | 65.2 µs, 65.2 µs, 64.2 µs | 176 µs, 168 µs, 176 µs |
-| `chain-1000.parse` | 3.99 ms | 5.17 ms | 1.29× | 1.24× | 3 of 3 | 4.17 ms, 3.99 ms, 3.84 ms | 5.17 ms, 5 ms, 5.17 ms |
-| `chain-1000.to_json` | 8.74 ms | 26.5 ms | 3.04× | 2.71× | 3 of 3 | 9.79 ms, 8.53 ms, 8.74 ms | 26.5 ms, 26.5 ms, 27.1 ms |
-| `chain-1000.format` | 13.5 ms | 33.6 ms | 2.49× | 2.38× | 3 of 3 | 13.8 ms, 12.4 ms, 13.5 ms | 32.9 ms, 33.8 ms, 33.6 ms |
-| `chain-1000.load` | 12.8 ms | 17.6 ms | 1.37× | 1.33× | 3 of 3 | 13.5 ms, 12.6 ms, 12.8 ms | 18 ms, 16.9 ms, 17.6 ms |
-| `chain-10000.parse` | 59 ms | 84.6 ms | 1.43× | 1.38× | 3 of 3 | 61.2 ms, 57.6 ms, 59 ms | 84.6 ms, 85.1 ms, 84.3 ms |
-| `chain-10000.to_json` | 114 ms | 291 ms | 2.56× | 2.43× | 3 of 3 | 114 ms, 105 ms, 119 ms | 302 ms, 291 ms, 290 ms |
-| `chain-10000.format` | 165 ms | 408 ms | 2.48× | 2.34× | 3 of 3 | 175 ms, 154 ms, 165 ms | 408 ms, 408 ms, 415 ms |
-| `chain-10000.load` | 179 ms | 268 ms | 1.50× | 1.43× | 3 of 3 | 178 ms, 179 ms, 188 ms | 270 ms, 265 ms, 268 ms |
-| `mounted-10.load` | 1.17 ms | 2.1 ms | 1.80× | 1.80× | 3 of 3 | 1.17 ms, 1.1 ms, 1.17 ms | 2.1 ms, 2.05 ms, 2.14 ms |
-| `mounted-100.load` | 16.2 ms | 21.8 ms | 1.35× | 1.28× | 3 of 3 | 16.2 ms, 15.7 ms, 16.9 ms | 22.6 ms, 21.8 ms, 21.6 ms |
-| `mounted-1000.load` | 208 ms | 292 ms | 1.40× | 1.37× | 3 of 3 | 216 ms, 199 ms, 208 ms | 297 ms, 286 ms, 292 ms |
+| `chain-10.parse` | 17.5 µs | 47 µs | 2.69× | 2.69× | 3 of 3 | 17.4 µs, 17.5 µs, 17.5 µs | 47 µs, 47 µs, 48 µs |
+| `chain-10.to_json` | 32 µs | 291 µs | 9.09× | 9.09× | 3 of 3 | 32 µs, 31.7 µs, 32 µs | 291 µs, 291 µs, 293 µs |
+| `chain-10.format` | 49.6 µs | 348 µs | 7.02× | 6.99× | 3 of 3 | 49.8 µs, 49.6 µs, 49.4 µs | 348 µs, 348 µs, 346 µs |
+| `chain-10.load` | 65 µs | 170 µs | 2.62× | 2.57× | 3 of 3 | 65 µs, 64.3 µs, 65.7 µs | 172 µs, 170 µs, 169 µs |
+| `chain-1000.parse` | 3.89 ms | 4.92 ms | 1.26× | 1.23× | 3 of 3 | 3.85 ms, 3.99 ms, 3.89 ms | 4.9 ms, 4.92 ms, 4.97 ms |
+| `chain-1000.to_json` | 8.65 ms | 26.3 ms | 3.04× | 2.93× | 3 of 3 | 8.96 ms, 8.65 ms, 8.61 ms | 26.3 ms, 26.3 ms, 27.1 ms |
+| `chain-1000.format` | 12.9 ms | 33.3 ms | 2.58× | 2.57× | 3 of 3 | 12.4 ms, 12.9 ms, 13 ms | 33.1 ms, 33.3 ms, 33.5 ms |
+| `chain-1000.load` | 12.6 ms | 17.1 ms | 1.36× | 1.31× | 3 of 3 | 12.4 ms, 12.6 ms, 13.1 ms | 17 ms, 17.4 ms, 17.1 ms |
+| `chain-10000.parse` | 58.2 ms | 79.1 ms | 1.36× | 1.36× | 3 of 3 | 58.2 ms, 58.5 ms, 57.8 ms | 79.1 ms, 79.7 ms, 78.8 ms |
+| `chain-10000.to_json` | 102 ms | 287 ms | 2.81× | 2.68× | 3 of 3 | 102 ms, 107 ms, 102 ms | 286 ms, 287 ms, 287 ms |
+| `chain-10000.format` | 163 ms | 395 ms | 2.42× | 2.41× | 3 of 3 | 159 ms, 164 ms, 163 ms | 395 ms, 394 ms, 398 ms |
+| `chain-10000.load` | 176 ms | 261 ms | 1.48× | 1.45× | 3 of 3 | 180 ms, 176 ms, 175 ms | 260 ms, 261 ms, 261 ms |
+| `mounted-10.load` | 1.12 ms | 2.08 ms | 1.87× | 1.86× | 3 of 3 | 1.12 ms, 1.12 ms, 1.11 ms | 2.08 ms, 2.09 ms, 2.06 ms |
+| `mounted-100.load` | 15.7 ms | 21.6 ms | 1.37× | 1.33× | 3 of 3 | 16 ms, 15.7 ms, 15.7 ms | 21.3 ms, 21.6 ms, 21.6 ms |
+| `mounted-1000.load` | 201 ms | 276 ms | 1.37× | 1.37× | 3 of 3 | 201 ms, 197 ms, 205 ms | 276 ms, 272 ms, 297 ms |
 
 ## Results
 
@@ -149,30 +149,32 @@ are compared byte for byte after every run. Times are medians, the
 speed-up is Python's median over Haskell's, and "lowest round" is the
 smallest ratio within a single round.
 
-Run on 2026-10-12, 23:05–23:06 local (UTC-3), at commit `6be7b9a`, on the
+Run on 2026-10-13, 03:31–03:32 local (UTC-3), at commit `df073f3`, on the
 same machine (Apple M4, 10 cores, 24 GB, macOS 26), with CPython 3.14.6 and
 petrus-engine at the pin, by
 
     "$(scripts/upstream-python petrus-engine)" -B packages/petrus-engine-file/bench/process_bench.py "$(cabal list-bin -v0 petrus-engine-file:exe:petrus-format-json)" 11
 
-The run had 11 rounds, with a load average of 3.63 at the start and 3.50 at
-the end. Its chain-10000 lowest round (1.27×) is a single round at that
-load; the median over the 11 is 1.97×. The run at
+The run had 11 rounds, with a load average of 3.02 at the start and at
+the end. The in-place row's lowest round (3.38×) is a single round; the
+median over the 11 is 5.98×, against 3.45× in the run at `6be7b9a`
+(23:05–23:06 the day before, load average 3.63–3.50), whose Haskell
+median was 35.0 ms against 20.1 ms here. That run gave 1.97–4.31× in all. The run at
 `81bbdc5` (load average 2.78–2.66) gave 2.34–3.96×. An earlier run (2026-10-11, load average 5.6–5.8) gave 2.29–5.05×:
 Python's start-up was about 10 ms slower under that load, and Haskell's
 about 2 ms faster (17.0 ms against 19.4 ms for chain-10).
 
 | scenario | Python | Haskell | speed-up | lowest round |
 | --- | ---: | ---: | ---: | ---: |
-| --infile/--outfile chain-10 | 76.9 ms | 17.8 ms | 4.31× | 3.91× |
-| --infile/--outfile chain-1000 | 110.7 ms | 34.7 ms | 3.20× | 3.01× |
-| --infile/--outfile chain-10000 | 474.7 ms | 241.1 ms | 1.97× | 1.27× |
-| in place, 100 x chain-10 | 120.6 ms | 35.0 ms | 3.45× | 3.41× |
+| --infile/--outfile chain-10 | 76.3 ms | 19.6 ms | 3.89× | 3.77× |
+| --infile/--outfile chain-1000 | 109.9 ms | 33.4 ms | 3.29× | 3.04× |
+| --infile/--outfile chain-10000 | 458.6 ms | 232.7 ms | 1.97× | 1.74× |
+| in place, 100 x chain-10 | 120.1 ms | 20.1 ms | 5.98× | 3.38× |
 
 Python spends 70–85 ms starting the interpreter and importing pydantic
 and petrus-engine before it formats anything. That start-up cost decides
 the small inputs. On chain-10000 the formatting itself dominates, and the
-ratio approaches the library rows' `format` ratio (2.5× in the current figures), less the time
+ratio approaches the library rows' `format` ratio (2.4× in the current figures), less the time
 both commands spend reading and writing 2 MB.
 
 ## Notes

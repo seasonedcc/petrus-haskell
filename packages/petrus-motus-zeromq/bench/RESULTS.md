@@ -1,6 +1,6 @@
 # ZeroMQ Dispatch transport benchmarks: Haskell vs the Python reference
 
-<!-- scripts/bench: measured sources 51efa64e5f828df9 at 1427bb8afe70 -->
+<!-- scripts/bench: measured sources 72602e5ff870a7dd at df073f3106e5 -->
 
 `bench/Main.hs` and `bench/python_bench.py` time the same workloads. On each
 side the client runs in the bench process and the server is a separate
@@ -70,33 +70,37 @@ Every figure is the median of 10 timed runs after one warm-up run.
 
 ## Current figures
 
-Measured on 2026-10-12, 21:08–21:09 local (UTC-3), at commit `5b76e51`, on
-the Apple M4 (Darwin arm64) with a 1-minute load average of 3.18–3.40: five
-interleaved repetitions, alternating which side goes first, of
+Measured on 2026-10-13, 03:45–03:46 and 04:06 local (UTC-3), at commit
+`df073f3`, on the Apple M4 (Darwin arm64) with a 1-minute load average of
+2.50–3.05: five interleaved repetitions, alternating which side goes first,
+run as three and then two (the two memory rows read under 1.15× after the
+three, and the whole run takes twenty seconds) of
 
-    scripts/bench-compare petrus-motus-zeromq 5
+    scripts/bench-compare petrus-motus-zeromq 3
 
 Haskell figures are the bench's own medians of 10 timed runs, run directly
 in the package directory with `+RTS -M2G`; Python figures are the twin's
 own timing (CPython 3.14.6). Each figure is the median over the
 repetitions, and the ratio is Python ÷ Haskell (above 1 means Haskell is
-faster). Haskell is faster on every row, in every repetition: the
-synchronous memory rows (the transport alone) by 1.08× and 1.17×, the
-native asynchronous access by 1.58× and 1.98×, and the Local-backed rows by
-1.68–1.82×. The figures at `4d6410b` (19:15, five repetitions) read 1.08×,
+faster). Haskell is faster on every row: the synchronous memory rows (the
+transport alone) by 1.05× and 1.13× (`memory/claim-empty-100` was behind
+in one repetition of five, 0.99×, and ahead in the other four), the native
+asynchronous access by 1.57× and 1.99×, and the Local-backed rows by
+1.71–1.85×, in every repetition. The figures at `5b76e51` (21:08, five
+repetitions) read 1.08×, 1.17×, 1.58×, 1.98× and 1.68–1.82×; those at `4d6410b` (19:15, five repetitions) read 1.08×,
 1.16×, 1.60×, 1.98× and 1.68–1.84×; those at `fc3e42b` (05:21, three
 repetitions) 1.09×, 1.17×, 1.60×, 2.01× and 1.64–1.77×.
 
 | Benchmark | Haskell | Python | Python / Haskell | Lowest per repetition | Haskell ahead | Haskell per repetition | Python per repetition |
 |---|---:|---:|---:|---:|---:|---|---|
-| `zeromq/local/claim-empty-100` | 20.4 ms | 34.3 ms | 1.68× | 1.65× | 5 of 5 | 18.8 ms, 20.2 ms, 20.5 ms, 20.4 ms, 20.8 ms | 34.3 ms, 34.7 ms, 34.1 ms, 33.6 ms, 35.9 ms |
-| `zeromq/local/roundtrip-20` | 17.4 ms | 31.8 ms | 1.82× | 1.73× | 5 of 5 | 17.1 ms, 18.4 ms, 17.8 ms, 17 ms, 17.4 ms | 31 ms, 31.8 ms, 30.8 ms, 33.2 ms, 31.8 ms |
-| `zeromq/local-held-open/claim-empty-100` | 20.3 ms | 35.2 ms | 1.74× | 1.68× | 5 of 5 | 18.9 ms, 20.4 ms, 20.1 ms, 20.3 ms, 20.5 ms | 34.7 ms, 35.2 ms, 35.3 ms, 34 ms, 35.5 ms |
-| `zeromq/local-held-open/roundtrip-20` | 17.5 ms | 31.7 ms | 1.81× | 1.51× | 5 of 5 | 21 ms, 17.5 ms, 17.7 ms, 17.3 ms, 17.4 ms | 31.7 ms, 32.7 ms, 31.7 ms, 31.5 ms, 31.8 ms |
-| `zeromq/memory/claim-empty-100` | 19 ms | 20.5 ms | 1.08× | 1.06× | 5 of 5 | 17.9 ms, 19.2 ms, 19.3 ms, 18.9 ms, 19 ms | 20.5 ms, 21.1 ms, 20.5 ms, 20.5 ms, 20.7 ms |
-| `zeromq/memory/custody-20` | 11.8 ms | 13.8 ms | 1.17× | 1.13× | 5 of 5 | 11.1 ms, 11.8 ms, 12.1 ms, 11.8 ms, 11.5 ms | 13.9 ms, 14 ms, 13.7 ms, 13.8 ms, 13.8 ms |
-| `zeromq/memory/async-claim-empty-100-c1` | 19.4 ms | 30.7 ms | 1.58× | 1.57× | 5 of 5 | 19.1 ms, 19.4 ms, 19.4 ms, 19.5 ms, 19.2 ms | 30.7 ms, 31.3 ms, 30.5 ms, 30.6 ms, 30.8 ms |
-| `zeromq/memory/async-claim-empty-100-c8` | 11 ms | 21.7 ms | 1.98× | 1.97× | 5 of 5 | 10.9 ms, 11.1 ms, 11 ms, 11 ms, 10.8 ms | 21.7 ms, 22.1 ms, 21.8 ms, 21.7 ms, 21.7 ms |
+| `zeromq/local/claim-empty-100` | 20.6 ms | 35.2 ms | 1.71× | 1.69× | 5 of 5 | 20.7 ms, 20.6 ms, 20.5 ms, 20.8 ms, 19 ms | 35 ms, 35.5 ms, 34.6 ms, 35.2 ms, 36.1 ms |
+| `zeromq/local/roundtrip-20` | 18 ms | 33.2 ms | 1.84× | 1.76× | 5 of 5 | 18.9 ms, 18.1 ms, 18 ms, 17 ms, 17.7 ms | 33.4 ms, 33.2 ms, 31.6 ms, 31.5 ms, 33.8 ms |
+| `zeromq/local-held-open/claim-empty-100` | 20.7 ms | 35.4 ms | 1.71× | 1.69× | 5 of 5 | 19.8 ms, 20.4 ms, 20.7 ms, 20.7 ms, 20.9 ms | 34.7 ms, 35.4 ms, 35.4 ms, 35 ms, 40 ms |
+| `zeromq/local-held-open/roundtrip-20` | 18 ms | 33.3 ms | 1.85× | 1.79× | 5 of 5 | 19.2 ms, 17.3 ms, 18 ms, 17.1 ms, 18.6 ms | 35.3 ms, 33.3 ms, 34.4 ms, 31.7 ms, 33.3 ms |
+| `zeromq/memory/claim-empty-100` | 19.4 ms | 20.4 ms | 1.05× | 0.99× | 4 of 5 | 18.1 ms, 19.5 ms, 19.4 ms, 19.2 ms, 19.8 ms | 20.4 ms, 21 ms, 20.3 ms, 20.7 ms, 19.7 ms |
+| `zeromq/memory/custody-20` | 12 ms | 13.6 ms | 1.13× | 1.07× | 5 of 5 | 11.9 ms, 12.1 ms, 12 ms, 12 ms, 12.4 ms | 13.5 ms, 13.6 ms, 14 ms, 13.8 ms, 13.3 ms |
+| `zeromq/memory/async-claim-empty-100-c1` | 19.4 ms | 30.4 ms | 1.57× | 1.46× | 5 of 5 | 19.3 ms, 19.4 ms, 19.3 ms, 19.5 ms, 20 ms | 30.6 ms, 30.4 ms, 30.2 ms, 31 ms, 29.2 ms |
+| `zeromq/memory/async-claim-empty-100-c8` | 10.8 ms | 21.5 ms | 1.99× | 1.80× | 5 of 5 | 10.8 ms, 10.6 ms, 10.6 ms, 10.8 ms, 11 ms | 21.9 ms, 21.5 ms, 20.9 ms, 21.6 ms, 19.8 ms |
 
 **The socket waits now poll in libzmq.** The binding waits for a socket
 with an interruptible `zmq_poll` on the calling OS thread, as pyzmq's
