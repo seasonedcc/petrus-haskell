@@ -31,3 +31,17 @@ PRAGMA readers and the writer fence against the pinned Python code.
   `generalCategory`. `Petrus.Sqlite.PythonRepr` now re-exports
   petrus-json's `pythonStrRepr` (CPython 3.14's printability table, checked
   on every code point).
+- **An asynchronous exception while a statement was prepared.** No
+  divergence from the reference, which has no foreign calls, but a defect of
+  the Haskell side alone. An exception thrown to a thread inside
+  `sqlite3_prepare_v2` is raised as the call returns, and it used to land
+  before the statement was cached, leaving it unfinalized. `close` then
+  failed with `SQLITE_BUSY` ("unable to close due to unfinalized
+  statements"), the handle leaked, and `withConnection` and `open` raised
+  that error in place of the original exception. Preparing and caching now
+  run masked, and `withConnection` and `open` close quietly on the way out
+  of a failure. The test "an asynchronous exception while a statement is
+  prepared leaves nothing unfinalized" throws into a 10 000-branch
+  `CASE` statement's preparation ten times (every try failed before), and
+  "withConnection rethrows the action's exception when closing fails too"
+  checks the second half.

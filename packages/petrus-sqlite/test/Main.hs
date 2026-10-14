@@ -1,10 +1,10 @@
 module Main (main) where
 
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO, forkIOWithUnmask, threadDelay, throwTo)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar, tryReadMVar)
-import Control.Exception (ErrorCall (..), SomeException, bracket, throwIO, try)
-import Control.Monad (forM_, void, when)
-import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
+import Control.Exception (ErrorCall (..), Exception, SomeException, bracket, fromException, mask_, throwIO, try)
+import Control.Monad (forM, forM_, void, when)
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import Data.ByteString.Char8 qualified as BC
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -17,6 +17,7 @@ import Petrus.Posix (FileStat (..), Follow (..), permissionBits, realpath, statA
 import Petrus.Sqlite
 import Petrus.TestSupport
 import Database.SQLite3 (Database)
+import Database.SQLite3 qualified as S
 import System.Directory (createDirectory, createDirectoryLink, doesFileExist, removeFile)
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -27,6 +28,7 @@ main :: IO ()
 main = hspec $ do
   profileSpec
   paramSpec
+  safetySpec
   transactionSpec
   poolSpec
   schemaSpec
@@ -582,3 +584,48 @@ fenceSpec = describe "WriterFence" $ do
     releaseWriterFence fence
     releaseWriterFence fence
     bracket (acquireWriterFence (dir </> "db.sqlite3") "x") releaseWriterFence (const (pure ()))
+
+data Stop = Stop
+  deriving stock (Eq, Show)
+
+instance Exception Stop
+
+-- A statement SQLite takes tens of milliseconds to prepare (a CASE of
+-- 10 000 branches) and no time to run (WHERE 0).
+slowToPrepare :: Text
+slowToPrepare = "SELECT CASE 1 " <> T.unwords ["WHEN " <> n <> " THEN " <> n | i <- [1 .. 10000 :: Int], let n = T.pack (show i)] <> " END WHERE 0"
+
+safetySpec :: Spec
+safetySpec = describe "Asynchronous exceptions" $ do
+  it "an asynchronous exception while a statement is prepared leaves nothing unfinalized" $ withTemp $ \dir -> do
+    let path = dir </> "async.sqlite3"
+    outcomes <- forM [1 .. 10 :: Int] $ \_ -> do
+      started <- newEmptyMVar
+      finished <- newEmptyMVar
+      worker <- mask_ $ forkIOWithUnmask $ \unmask ->
+        try (unmask (withConnection ledgerProfile path (\connection -> putMVar started () >> query connection slowToPrepare [])))
+          >>= putMVar finished
+      takeMVar started
+      -- Well inside sqlite3_prepare_v2: the exception is raised as the
+      -- call returns.
+      threadDelay 5000
+      throwTo worker Stop
+      takeMVar finished
+    map outcome outcomes `shouldBe` replicate 10 "Stop"
+
+  it "withConnection rethrows the action's exception when closing fails too" $ withTemp $ \dir -> do
+    leaked <- newIORef Nothing
+    result <- try . withConnection ledgerProfile (dir </> "close.sqlite3") $ \connection -> do
+      -- A statement prepared outside the connection's cache, never
+      -- finalized: sqlite3_close refuses with SQLITE_BUSY.
+      statement <- S.prepare (connectionDatabase connection) "SELECT 1"
+      writeIORef leaked (Just (connection, statement))
+      throwIO (ErrorCall "boom")
+    result `shouldBe` (Left (ErrorCall "boom") :: Either ErrorCall ())
+    readIORef leaked >>= mapM_ (\(connection, statement) -> S.finalize statement >> S.close (connectionDatabase connection))
+  where
+    outcome :: Either SomeException [[SQLData]] -> String
+    outcome = \case
+      Left err | Just Stop <- fromException err -> "Stop"
+      Left err -> show err
+      Right _ -> "finished before the exception"
