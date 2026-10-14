@@ -83,7 +83,7 @@ module Petrus.Sqlite.Connection
   ) where
 
 import Control.Concurrent (threadDelay)
-import Control.Exception (Exception, SomeException, bracket, catch, mask, onException, throwIO, try)
+import Control.Exception (Exception, SomeException, catch, mask, mask_, onException, throwIO, try)
 import Control.Monad (forM_, void, when, zipWithM_)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -317,11 +317,11 @@ setBusyTimeout database@(Direct.Database handle) timeoutMs = do
 
 -- | Open a connection and run the profile's setup statements in order. On
 -- any failure the connection is closed and the error rethrown (a refused
--- WAL switch raises 'WalRefused').
+-- WAL switch raises 'WalRefused'); a failure to close does not replace it.
 open :: Profile -> FilePath -> IO Connection
 open profile path = mask $ \restore -> do
   connection <- connect path (busyTimeoutMs profile) (isolationLevel profile)
-  restore (mapM_ (runSetup connection) (setup profile)) `onException` close connection
+  restore (mapM_ (runSetup connection) (setup profile)) `onException` closeQuietly connection
   pure connection
 
 -- | Run a profile's setup statements on an already connected database, in
@@ -361,16 +361,27 @@ runSetup connection = \case
       [] -> Nothing
 
 -- | Finalize cached statements and close the connection (an open
--- transaction is rolled back by SQLite, as when Python closes).
+-- transaction is rolled back by SQLite, as when Python closes). It raises
+-- SQLite's @SQLITE_BUSY@ when a statement prepared on
+-- 'connectionDatabase' outside this module is still unfinalized.
 close :: Connection -> IO ()
-close connection = do
+close connection = mask_ $ do
   cached <- atomicModifyIORef' (statementCache connection) (Map.empty,)
   forM_ cached $ \statement -> S.finalize statement `catch` \(_ :: SQLError) -> pure ()
   S.close (connectionDatabase connection)
 
--- | 'open', run the action, 'close'.
+-- 'close' on the way out of a failure, whose exception it must not replace.
+closeQuietly :: Connection -> IO ()
+closeQuietly connection = close connection `catch` \(_ :: SQLError) -> pure ()
+
+-- | 'open', run the action, 'close'. When the action throws, its exception
+-- is rethrown even if closing fails too.
 withConnection :: Profile -> FilePath -> (Connection -> IO a) -> IO a
-withConnection profile path = bracket (open profile path) close
+withConnection profile path action = mask $ \restore -> do
+  connection <- open profile path
+  result <- restore (action connection) `onException` closeQuietly connection
+  close connection
+  pure result
 
 cacheLimit :: Int
 cacheLimit = 128
@@ -379,8 +390,20 @@ cacheLimit = 128
 -- unbound afterwards.
 withPrepared :: Connection -> Text -> (Statement -> IO a) -> IO a
 withPrepared connection sql action = do
+  statement <- mask_ (cachedStatement connection sql)
+  let cleanup = (S.reset statement `catch` \(_ :: SQLError) -> pure ()) >> S.clearBindings statement
+  (action statement <* cleanup) `onException` cleanup
+
+-- The cached statement for this text, prepared and cached on a miss. Run
+-- it masked: an asynchronous exception raised as @sqlite3_prepare_v2@
+-- returns, before the statement is cached, would leave it unfinalized, and
+-- 'close' would then fail with @SQLITE_BUSY@ and leak the handle. No step
+-- here is interruptible (foreign calls and 'IORef' operations), so the mask
+-- defers such an exception until the statement is in the cache.
+cachedStatement :: Connection -> Text -> IO Statement
+cachedStatement connection sql = do
   cache <- readIORef (statementCache connection)
-  statement <- case Map.lookup sql cache of
+  case Map.lookup sql cache of
     Just statement -> pure statement
     Nothing -> do
       statement <- S.prepare (connectionDatabase connection) sql
@@ -390,8 +413,6 @@ withPrepared connection sql action = do
           else writeIORef (statementCache connection) (Map.insert sql statement cache) >> pure []
       mapM_ S.finalize evicted
       pure statement
-  let cleanup = (S.reset statement `catch` \(_ :: SQLError) -> pure ()) >> S.clearBindings statement
-  (action statement <* cleanup) `onException` cleanup
 
 -- CPython (3.6+, legacy transaction control) begins implicitly before
 -- INSERT/UPDATE/DELETE/REPLACE when not in a transaction.
