@@ -38,9 +38,9 @@ import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Posix.Files (fileMode, getFileStatus)
-import System.Posix.Process (getProcessStatus)
+import System.Posix.Process (getProcessGroupID, getProcessStatus)
 import System.Posix.Signals (sigKILL, sigTERM, signalProcess)
-import System.Process (readProcessWithExitCode)
+import System.Process (CreateProcess (..), StdStream (..), proc, readProcessWithExitCode, withCreateProcess)
 import System.Timeout (timeout)
 import Test.Hspec
 
@@ -296,6 +296,27 @@ spec = describe "Gondolin provider" $ do
         RuntimeError
         "uncertain"
       readIORef signalled `shouldReturn` []
+
+    -- @ps -axo@ lists every process on the host, so one command line that is
+    -- not UTF-8 (a shell whose argument holds byte 0xFF, waiting on stdin) must
+    -- not fail the group snapshot or an identity: if it did, every create
+    -- and destroy would fail for as long as that process ran.
+    it "reads the process table while a command line is not UTF-8" $
+      withCreateProcess (proc "/bin/sh" ["-c", "exec /bin/sh -c 'read line' \"$(printf 'petrus-\\377')\""]) {std_in = CreatePipe} $ \_ _ _ _ -> do
+        group <- fromIntegral <$> getProcessGroupID
+        deadline <- (+ 5) <$> getMonotonicTime
+        let named = filter (("petrus-\xFFFD" `T.isInfixOf`) . memberCommand)
+            await = do
+              members <- groupMembers group
+              now <- getMonotonicTime
+              if null (named members) && now < deadline then threadDelay 20000 >> await else pure members
+        members <- await
+        case named members of
+          member : _ -> do
+            identity <- psIdentity (memberPid member)
+            identityState identity `shouldBe` "present"
+            fmap ("petrus-\xFFFD" `T.isInfixOf`) (identityCommand identity) `shouldBe` Just True
+          [] -> expectationFailure ("no group member names the undecodable argument: " <> show members)
 
     it "escalates TERM then KILL while members remain" $ do
       (processes, signalled) <-
