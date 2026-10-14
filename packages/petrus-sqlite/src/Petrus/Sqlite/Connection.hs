@@ -59,6 +59,7 @@ module Petrus.Sqlite.Connection
   , execute_
   , executeMany
   , query
+  , queryCallingHaskell
   , queryFirst
   , changes
   , lastInsertRowId
@@ -518,21 +519,43 @@ executeMany :: Connection -> Text -> [[SQLData]] -> IO Int
 executeMany connection sql rows = sum <$> mapM (execute connection sql) rows
 
 -- | Run a statement and collect every row.
+--
+-- The first step is a safe foreign call: it may wait for locks (the busy
+-- handler sleeps). Later steps of the same statement already hold the read
+-- snapshot and never wait, so they are unsafe calls (@stepNoCB@), 25–90 ns
+-- a row cheaper: 12–14% of a 1 000-row read of five columns, 4–14% of
+-- 10 000- and 100 000-row ones, threaded runtime or not (Apple M4,
+-- 2026-10-14). An unsafe call
+-- must not call back into Haskell, so a statement whose rows run Haskell
+-- code inside SQLite, such as a SQL function or collation registered from
+-- Haskell (direct-sqlite's @createFunction@, @createCollation@ or a
+-- @sqlite3_create_function_v2@ with a @wrapper@ callback), must use
+-- 'queryCallingHaskell' instead: under 'query' it hangs the threaded
+-- runtime from its second row on, and aborts the non-threaded one with
+-- "schedule: re-entered unsafely".
 query :: Connection -> Text -> [SQLData] -> IO [[SQLData]]
-query connection sql params = do
+query = queryStepping S.stepNoCB
+
+-- | 'query' with every step a safe foreign call, for statements that call
+-- back into Haskell (a SQL function or collation registered from Haskell).
+queryCallingHaskell :: Connection -> Text -> [SQLData] -> IO [[SQLData]]
+queryCallingHaskell = queryStepping S.step
+
+-- Run a statement and collect every row: the first step safe, the later
+-- ones by the given step.
+queryStepping :: (Statement -> IO StepResult) -> Connection -> Text -> [SQLData] -> IO [[SQLData]]
+queryStepping later connection sql params = do
   implicitBegin connection sql
   withPrepared connection sql $ \statement -> do
     bindAll statement (map Datum params)
-    -- The first step may wait for locks (the busy handler sleeps), so it is
-    -- a safe call. Later steps of the same statement already hold the read
-    -- snapshot and never wait, so they use the cheaper unsafe call.
     let loop acc =
-          S.stepNoCB statement >>= \case
+          later statement >>= \case
             Row -> S.columns statement >>= \row -> loop (row : acc)
             Done -> pure (reverse acc)
     S.step statement >>= \case
       Row -> S.columns statement >>= \row -> loop [row]
       Done -> pure []
+{-# INLINE queryStepping #-}
 
 -- | Run a statement and return its first row (@fetchone()@).
 queryFirst :: Connection -> Text -> [SQLData] -> IO (Maybe [SQLData])

@@ -3,9 +3,11 @@ module Main (main) where
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar, tryReadMVar)
 import Control.Exception (ErrorCall (..), SomeException, bracket, throwIO, try)
+import Control.Concurrent.STM (atomically)
 import Control.Monad (forM_, void, when)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.ByteString.Char8 qualified as BC
+import Data.ByteString.Lazy.Char8 qualified as BLC
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -17,6 +19,11 @@ import Petrus.Posix (FileStat (..), Follow (..), permissionBits, realpath, statA
 import Petrus.Sqlite
 import Petrus.TestSupport
 import Database.SQLite3 (Database)
+import Database.SQLite3 qualified as S
+import System.Environment (getEnvironment, getExecutablePath, lookupEnv)
+import System.Exit (ExitCode (..))
+import System.Posix.Signals (sigKILL, signalProcess)
+import System.Process.Typed (byteStringOutput, getPid, getStderr, getStdout, proc, setEnv, setStderr, setStdout, startProcess, stopProcess, waitExitCodeSTM)
 import System.Directory (createDirectory, createDirectoryLink, doesFileExist, removeFile)
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -24,14 +31,18 @@ import System.Timeout (timeout)
 import Test.Hspec
 
 main :: IO ()
-main = hspec $ do
-  profileSpec
-  paramSpec
-  transactionSpec
-  poolSpec
-  schemaSpec
-  reprSpec
-  fenceSpec
+main =
+  lookupEnv childVariable >>= \case
+    Just "haskell-function" -> haskellFunctionChild
+    _ -> hspec $ do
+      profileSpec
+      paramSpec
+      safetySpec
+      transactionSpec
+      poolSpec
+      schemaSpec
+      reprSpec
+      fenceSpec
 
 withTemp :: (FilePath -> IO a) -> IO a
 withTemp action = withSystemTempDirectory "petrus-sqlite" $ \dir -> realpath dir >>= action
@@ -582,3 +593,39 @@ fenceSpec = describe "WriterFence" $ do
     releaseWriterFence fence
     releaseWriterFence fence
     bracket (acquireWriterFence (dir </> "db.sqlite3") "x") releaseWriterFence (const (pure ()))
+
+-- | The environment variable that makes this executable run one scenario
+-- as a child process instead of the suite.
+childVariable :: String
+childVariable = "PETRUS_SQLITE_TEST_CHILD"
+
+-- A query over five rows, each calling a scalar function written in
+-- Haskell. Should a step be an unsafe foreign call, the function's callback
+-- re-enters the runtime from it: the threaded runtime hangs and the
+-- non-threaded one aborts ("schedule: re-entered unsafely"). 'query' steps
+-- the second row on that way; 'queryCallingHaskell' never does.
+haskellFunctionChild :: IO ()
+haskellFunctionChild = do
+  connection <- connect ":memory:" 5000 Autocommit
+  S.createFunction (connectionDatabase connection) "twice" (Just 1) True $ \function args ->
+    S.funcArgInt64 args 0 >>= S.funcResultInt64 function . (* 2)
+  rows <- queryCallingHaskell connection "WITH RECURSIVE n(i) AS (VALUES (1) UNION ALL SELECT i + 1 FROM n WHERE i < 5) SELECT twice(i) FROM n" []
+  print rows
+  close connection
+
+safetySpec :: Spec
+safetySpec = describe "Foreign calls" $ do
+  it "queryCallingHaskell runs a query whose every row calls a Haskell SQL function (in a child, with a deadline)" $ do
+    self <- getExecutablePath
+    environment <- getEnvironment
+    let child = setStdout byteStringOutput . setStderr byteStringOutput . setEnv ((childVariable, "haskell-function") : environment) $ proc self []
+        -- A runtime stuck in an unsafe call never handles SIGTERM, and
+        -- the killed child may be reaped before stopProcess waits for it.
+        kill process = do
+          getPid process >>= mapM_ (\pid -> try @SomeException (signalProcess sigKILL pid))
+          void (try @SomeException (stopProcess process))
+    result <- bracket (startProcess child) kill $ \process ->
+      timeout 10000000 (atomically ((,,) <$> waitExitCodeSTM process <*> getStdout process <*> getStderr process))
+    case result of
+      Nothing -> expectationFailure "the query did not finish within 10 s: a step called back into Haskell from an unsafe foreign call"
+      Just (code, out, err) -> (code, BLC.unpack out, BLC.unpack err) `shouldBe` (ExitSuccess, show [[SQLInteger (2 * i)] | i <- [1 .. 5]] ++ "\n", "")
