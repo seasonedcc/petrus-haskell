@@ -54,7 +54,7 @@ module Petrus.Motus.Execution.Providers.Gondolin
   , sidecarSha256
   ) where
 
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar, threadDelay)
 import Control.Exception
   ( Handler (..)
   , IOException
@@ -107,7 +107,7 @@ import System.Directory (doesDirectoryExist, doesPathExist, listDirectory, remov
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, takeFileName, (</>))
-import System.IO (Handle, hClose)
+import System.IO (Handle, hClose, hSetBinaryMode)
 import System.IO.Error (isDoesNotExistError)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Posix.Directory (createDirectory)
@@ -132,7 +132,7 @@ import System.Posix.Signals (Signal, sigKILL, sigTERM, signalProcessGroup)
 import System.Posix.Temp (mkdtemp)
 import System.Posix.Types (Fd (..))
 import System.Posix.User (getRealUserID)
-import System.Process (proc, readCreateProcessWithExitCode)
+import System.Process (CreateProcess (..), StdStream (..), proc, waitForProcess, withCreateProcess)
 import System.Timeout (timeout)
 
 -- ---------------------------------------------------------------------------
@@ -616,10 +616,25 @@ systemInspector = ProcessInspector groupMembers processIdentity killGroup
       (True <$ signalProcessGroup signal (fromIntegral pgid)) `catch` \(e :: IOException) ->
         if isDoesNotExistError e then pure False else throwIO (osErrorFromIO e)
 
+-- | @subprocess.run(("ps", ...), capture_output=True)@, with the output read
+-- as bytes and decoded leniently, as @/proc@ is read above.  @ps -axo@
+-- prints the command line of every process on the host, and one that is not
+-- valid UTF-8 (another program's argument, a file name) must not fail the
+-- read: a strict decode failed every identity check and every cleanup for
+-- as long as such a process ran.
 runPs :: [String] -> IO (ExitCode, Text)
-runPs arguments = do
-  (code, out, _) <- readCreateProcessWithExitCode (proc "ps" arguments) ""
-  pure (code, T.pack out)
+runPs arguments =
+  withCreateProcess (proc "ps" arguments) {std_out = CreatePipe, std_err = CreatePipe} $ \_ out err process ->
+    case (out, err) of
+      (Just output, Just errors) -> do
+        mapM_ (`hSetBinaryMode` True) [output, errors]
+        discarded <- newEmptyMVar
+        _ <- forkIO ((try (B.hGetContents errors) :: IO (Either IOException ByteString)) >>= putMVar discarded)
+        bytes <- B.hGetContents output
+        _ <- takeMVar discarded
+        code <- waitForProcess process
+        pure (code, TE.decodeUtf8With TE.lenientDecode bytes)
+      _ -> ioError (userError "ps was started without its output pipes")
 
 -- | @_ps_identity@: @ps -o lstart= -o command= -p PID@.
 psIdentity :: Int -> IO Identity
