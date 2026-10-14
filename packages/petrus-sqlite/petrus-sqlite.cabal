@@ -71,7 +71,10 @@ test-suite petrus-sqlite-test
                   , petrus-sqlite
                   , petrus-test-support
                   , temporary
+                  , stm
                   , text
+                  , typed-process
+                  , unix
 
 benchmark petrus-sqlite-bench
   import:           warnings

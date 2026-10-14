@@ -31,3 +31,17 @@ PRAGMA readers and the writer fence against the pinned Python code.
   `generalCategory`. `Petrus.Sqlite.PythonRepr` now re-exports
   petrus-json's `pythonStrRepr` (CPython 3.14's printability table, checked
   on every code point).
+- **Statements that call back into Haskell.** Again a defect of the
+  Haskell side alone. `query` steps every row after the first with
+  direct-sqlite's `stepNoCB`, an unsafe foreign call, which must not call
+  back into Haskell. A statement whose rows call a SQL function or
+  collation registered from Haskell hung the threaded runtime from its
+  second row on (and would abort the non-threaded one with "schedule:
+  re-entered unsafely"). `queryCallingHaskell` now steps every row with a
+  safe call, and `query`'s documentation says when to use it. `query` keeps
+  the unsafe steps: a safe step costs 25–90 ns more a row, 12–14% of a
+  1 000-row read of five History columns and 4–14% of 10 000- and
+  100 000-row ones, threaded runtime or not (Apple M4, 2026-10-14, eight
+  interleaved repetitions). The test "queryCallingHaskell runs a query whose every row
+  calls a Haskell SQL function" runs it in a child process with a 10 s
+  deadline; with `query`, the child hung until the deadline.
