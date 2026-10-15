@@ -402,10 +402,10 @@ makeRig root o = do
       (custodyOperations custodyFake)
       ClaudeAdapterOptions
         { clock = getMonotonicTime
-        , clientFactory = Just (fromMaybe (factoryRecord factory) o.optFactory)
+        , clientFactory = GivenFactory (fromMaybe (factoryRecord factory) o.optFactory)
         , hooks = absentHooks
         , interpreter = "/usr/bin/python3"
-        , ready = Just (ok (mkRuntimeInstallation claudeA2Local.identity 1 [component] "test" "test" Set.empty), "/qualified/claude")
+        , ready = ReadyWith (ok (mkRuntimeInstallation claudeA2Local.identity 1 [component] "test" "test" Set.empty), "/qualified/claude")
         }
   pure Rig {adapter, continuations, turns, custodyFake, factory, root, runtimeRoot}
 
@@ -556,7 +556,7 @@ probeRig root hooks = do
       (claudeContinuationCodec (continuationOperations rig.continuations))
       (turnOperations rig.turns)
       (custodyOperations rig.custodyFake)
-      ClaudeAdapterOptions {clock = getMonotonicTime, clientFactory = Nothing, hooks, interpreter = "/usr/bin/python3", ready = Nothing}
+      ClaudeAdapterOptions {clock = getMonotonicTime, clientFactory = ProbedFactory, hooks, interpreter = "/usr/bin/python3", ready = Unprobed}
   pure (rig, adapter)
 
 -- ---------------------------------------------------------------------------
@@ -1007,6 +1007,19 @@ spec = describe "test_claude" $ do
       createDirectory (tmp </> "absent")
       absent <- probeRig (tmp </> "absent") (officialClaudeProbeHooks sidecar {searchPath = ["/nonexistent"]})
       (.disposition) <$> probeClaude (snd absent) Nothing `shouldReturn` ProbeNotInstalled
+
+    it "starts a turn only once a READY probe supplies the official factory" $ withTemp $ \tmp -> do
+      sidecar <- fixtureSidecar
+      (rig, adapter) <- probeRig tmp (officialClaudeProbeHooks sidecar)
+      invoked <- invoke rig "operation-probed" invocationOptions
+      protocolCode "runtime-not-ready" (startClaude adapter invoked.invocation)
+      (.disposition) <$> probeClaude adapter Nothing `shouldReturn` ProbeReady
+      operation <- startClaude adapter invoked.invocation
+      result <- waitClaudeOperation operation (Just 60)
+      (result.outcome, result.terminationCode) `shouldBe` (TurnCompleted, "turn-completed")
+      ((.disposition) <$> closeClaudeOperation operation) `shouldReturn` RuntimeCleanupClean
+      emptyRuntimeRoot rig
+      settleAttachment invoked.attachment
 
     it "runs a fresh and a resumed turn through the official client" $ withTemp $ \tmp -> do
       sidecar <- fixtureSidecar

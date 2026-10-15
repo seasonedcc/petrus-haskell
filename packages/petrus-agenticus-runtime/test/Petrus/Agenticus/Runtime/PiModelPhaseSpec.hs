@@ -46,7 +46,7 @@ import Petrus.Agenticus.Program.AgentNet
   , stopReasonText
   )
 import Petrus.Agenticus.Runtime.Custody
-import Petrus.Agenticus.Runtime.Internal.Process (runBounded)
+import Petrus.Agenticus.Runtime.Internal.Process (BoundedRun (..), ChildEnvironment (..), runBounded)
 import Petrus.Agenticus.Runtime.Operation (runtimeProtocolError)
 import Petrus.Agenticus.Runtime.Pi.Internal (pyB64DecodeText, strictLoad)
 import Petrus.Agenticus.Runtime.PiModelPhase.Internal
@@ -754,8 +754,9 @@ realHelperSpecs = do
 
   it "test_helper_syntax_and_exact_hands_bounds" $ do
     helper <- piModelPhaseHelperPath
-    checked <- runBounded ["node", "--check", helper] Nothing
-    fmap (\(code, _, _) -> code) checked `shouldBe` Just ExitSuccess
+    runBounded ["node", "--check", helper] InheritEnvironment >>= \case
+      Finished code _ _ -> code `shouldBe` ExitSuccess
+      Unfinished -> expectationFailure "node --check did not finish"
     source <- B.readFile helper
     forM_ ["maxItems:4", "maxLength:64", "maxLength:8", "maxLength:1024"] $ \bound ->
       source `shouldSatisfy` B.isInfixOf bound
@@ -774,7 +775,7 @@ realHelperSpecs = do
         modelPhaseNode rig.adapter >>= (`shouldSatisfy` ("/" `T.isPrefixOf`) . T.pack)
         helper <- piModelPhaseHelperPath
         let environment = [("HOME", tmp), ("PATH", prefix </> "node_modules/node/bin"), ("LANG", "C.UTF-8"), ("LC_ALL", "C.UTF-8")]
-        Just (code, out, err) <- runBounded [node, helper, root </> "dist/index.js", "--test-probe"] (Just environment)
+        Finished code out err <- runBounded [node, helper, root </> "dist/index.js", "--test-probe"] (OnlyEnvironment environment)
         (code, err) `shouldBe` (ExitSuccess, "")
         load (B.dropWhileEnd (== 10) out)
           `shouldBe` Object

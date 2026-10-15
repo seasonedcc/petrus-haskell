@@ -92,7 +92,7 @@ import Petrus.Agenticus.Program.AgentNet
   , parseStopReason
   )
 import Petrus.Agenticus.Runtime.Custody
-import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), privateEnvironment, spawnHelper, nextReceived, helperExited, closeOnce, closeInput, stopReader, killGroup, awaitDrain, waitExit, exitInt, runBounded, removeRoot)
+import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), privateEnvironment, spawnHelper, nextReceived, helperExited, closeOnce, closeInput, stopReader, killGroup, awaitDrain, waitExit, exitInt, ChildEnvironment (..), BoundedRun (..), runBounded, removeRoot)
 import Petrus.Agenticus.Runtime.Operation (runtimeProtocolError)
 import Petrus.Agenticus.Runtime.Pi.Internal
   ( b64Encode
@@ -548,7 +548,10 @@ probeModelPhase a packageRoot = do
         root <- strictPath packageRoot
         package <- readJson (root </> "package.json")
         ai <- readJson (root </> "node_modules/@earendil-works/pi-ai/package.json")
-        (versionCode, versionOut, _) <- runBounded [nodeReal, "--version"] Nothing >>= maybe invalid pure
+        (versionCode, versionOut, _) <-
+          runBounded [nodeReal, "--version"] InheritEnvironment >>= \case
+            Finished code out err -> pure (code, out, err)
+            Unfinished -> invalid
         when (versionCode /= ExitSuccess) invalid
         entry <- strictPath (root </> "dist/index.js")
         helper <- piModelPhaseHelperPath >>= strictPath
@@ -563,7 +566,10 @@ probeModelPhase a packageRoot = do
           || maybe True (< [22, 19, 0]) numbers
           then pure False
           else do
-            (code, out, err) <- runBounded [nodeReal, helper, entry, "--probe"] (Just (privateEnvironment "/dev/null" nodeReal)) >>= maybe invalid pure
+            (code, out, err) <-
+              runBounded [nodeReal, helper, entry, "--probe"] (OnlyEnvironment (privateEnvironment "/dev/null" nodeReal)) >>= \case
+                Finished code out err -> pure (code, out, err)
+                Unfinished -> invalid
             if code /= ExitSuccess || not (B.null err) || out /= "{\"type\":\"probe\",\"ok\":true}\n"
               then pure False
               else do

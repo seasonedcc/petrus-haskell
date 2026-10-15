@@ -411,7 +411,7 @@ claudeTurn python root = do
       (claudeContinuationCodec continuations)
       turns
       claudeCustody
-      ClaudeAdapterOptions {clock = getMonotonicTime, clientFactory = Nothing, hooks = officialClaudeProbeHooks sidecar, interpreter = python, ready = Nothing}
+      ClaudeAdapterOptions {clock = getMonotonicTime, clientFactory = ProbedFactory, hooks = officialClaudeProbeHooks sidecar, interpreter = python, ready = Unprobed}
   ready =<< probeClaude adapter Nothing
   let selected =
         ok . mkResolutionSnapshot 1 $

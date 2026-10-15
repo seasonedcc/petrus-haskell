@@ -213,7 +213,7 @@ import Petrus.Agenticus.Program.Descriptor
   , continuationRequirement
   )
 import Petrus.Agenticus.Runtime.Custody
-import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), privateEnvironment, spawnHelper, nextReceived, helperExited, closeHelper, waitExit, exitInt, runBounded, removeRoot)
+import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), privateEnvironment, spawnHelper, nextReceived, helperExited, closeHelper, waitExit, exitInt, ChildEnvironment (..), BoundedRun (..), runBounded, removeRoot)
 import Petrus.Agenticus.Runtime.Internal.Lifecycle (Lifecycle, LifecycleTexts (..), newLifecycle)
 import Petrus.Agenticus.Runtime.Internal.Lifecycle qualified as Lifecycle
 import Petrus.Agenticus.Runtime.Installation
@@ -1618,7 +1618,10 @@ probeInstalled a paths cli node = do
         || dependency `notElem` map String [piAiVersion, "^" <> piAiVersion, "~" <> piAiVersion]
     )
     invalid
-  (versionCode, versionOutBytes, _) <- runBounded [nodeReal, "--version"] Nothing >>= maybe invalid pure
+  (versionCode, versionOutBytes, _) <-
+    runBounded [nodeReal, "--version"] InheritEnvironment >>= \case
+      Finished code out err -> pure (code, out, err)
+      Unfinished -> invalid
   let versionOut = T.unpack (TE.decodeUtf8With (\_ _ -> Just '\xfffd') versionOutBytes)
   when (versionCode /= ExitSuccess) invalid
   let version = T.strip (T.pack versionOut)
@@ -1654,7 +1657,10 @@ probeInstalled a paths cli node = do
       pairs = Array . map (\(p, m) -> Array [String p, String m])
   catalogText <- either (const invalid) pure (J.dumpsText J.defaultDumps {J.itemSeparator = Just ",", J.keySeparator = ":"} catalogs)
   let command = [nodeReal, helper, sdk, "--probe", T.unpack catalogText] <> maybe [] pure ccEntry
-  (code, out, err) <- runBounded command (Just (privateEnvironment "/dev/null" nodeReal)) >>= maybe invalid pure
+  (code, out, err) <-
+    runBounded command (OnlyEnvironment (privateEnvironment "/dev/null" nodeReal)) >>= \case
+      Finished code out err -> pure (code, out, err)
+      Unfinished -> invalid
   frame <- either (const invalid) pure (strictFrameLoad (fst (BC.spanEnd (== '\n') out)))
   when (code /= ExitSuccess || not (B.null err) || BC.count '\n' out /= 1 || frame /= Object [("type", String "probe"), ("ok", Bool True)]) invalid
   system <- getSystemID

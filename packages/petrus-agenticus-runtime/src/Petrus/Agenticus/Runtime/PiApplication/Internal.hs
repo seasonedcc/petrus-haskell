@@ -144,7 +144,7 @@ import Petrus.Json.Python (pythonStrRepr)
 import Petrus.Agenticus.Internal.Validate (encodeRefusal, sha256Hex, utf8Length)
 import Petrus.Agenticus.Program.Descriptor (AgentProgramDescriptor, ProgramOwnership (..), agentProgramDescriptor, continuationRequirement)
 import Petrus.Agenticus.Runtime.Custody
-import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), privateEnvironment, spawnHelper, nextReceived, helperExited, closeHelper, waitExit, exitInt, runBounded, removeRoot)
+import Petrus.Agenticus.Runtime.Internal.Process (HelperSpec (..), Helper (..), Framing (..), privateEnvironment, spawnHelper, nextReceived, helperExited, closeHelper, waitExit, exitInt, ChildEnvironment (..), BoundedRun (..), runBounded, removeRoot)
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
   , RuntimeInstallation
@@ -1199,7 +1199,10 @@ probeInstalled a paths cli node = do
         || field "@earendil-works/pi-ai" dependencies `notElem` pinned
     )
     invalid
-  (versionCode, versionOut, _) <- runBounded [nodeReal, "--version"] Nothing >>= maybe invalid pure
+  (versionCode, versionOut, _) <-
+    runBounded [nodeReal, "--version"] InheritEnvironment >>= \case
+      Finished code out err -> pure (code, out, err)
+      Unfinished -> invalid
   when (versionCode /= ExitSuccess) invalid
   let version = T.strip (TE.decodeUtf8With (\_ _ -> Just '\xfffd') versionOut)
   case T.splitOn "." <$> T.stripPrefix "v" version of
@@ -1213,8 +1216,10 @@ probeInstalled a paths cli node = do
     either (const invalid) pure $
       J.dumpsText J.defaultDumps (Array [Array [String p, String m] | (p, m) <- piApiKeyCatalog])
   (code, out, err) <-
-    runBounded [nodeReal, helper, coding, core, ai, "--probe", T.unpack catalog] (Just (privateEnvironment "/dev/null" nodeReal))
-      >>= maybe invalid pure
+    runBounded [nodeReal, helper, coding, core, ai, "--probe", T.unpack catalog] (OnlyEnvironment (privateEnvironment "/dev/null" nodeReal))
+      >>= \case
+        Finished code out err -> pure (code, out, err)
+        Unfinished -> invalid
   when (code /= ExitSuccess || not (B.null err) || out /= "{\"type\":\"probe\",\"ok\":true}\n") invalid
   system <- getSystemID
   components <-
