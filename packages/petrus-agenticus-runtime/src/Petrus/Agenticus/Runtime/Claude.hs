@@ -109,6 +109,8 @@ module Petrus.Agenticus.Runtime.Claude
   , ClaudeProbeHooks (..)
   , officialClaudeProbeHooks
   , ClaudeAdapterOptions (..)
+  , ClientFactory (..)
+  , ClientReadiness (..)
   , claudeAdapterOptions
   , ClaudeRuntimeAdapter
   , newClaudeRuntimeAdapter
@@ -196,7 +198,7 @@ import Petrus.Agenticus.Program.Descriptor
   , continuationRequirement
   )
 import Petrus.Agenticus.Runtime.Custody
-import Petrus.Agenticus.Runtime.Internal.Process (runBounded, micros)
+import Petrus.Agenticus.Runtime.Internal.Process (BoundedRun (..), ChildEnvironment (..), runBounded, micros)
 import Petrus.Agenticus.Runtime.Internal.HostSupport
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
@@ -1361,18 +1363,32 @@ officialClaudeProbeHooks s =
 -- (the reference's tests assign @_installation@ and @_cli@).
 data ClaudeAdapterOptions = ClaudeAdapterOptions
   { clock :: IO Double
-  , clientFactory :: Maybe ClaudeClientFactory
+  , clientFactory :: ClientFactory
   , hooks :: ClaudeProbeHooks
   , interpreter :: FilePath
-  , ready :: Maybe (RuntimeInstallation, FilePath)
+  , ready :: ClientReadiness
   }
+
+-- | The factory the adapter starts its clients with.
+data ClientFactory
+  = -- | The official one ('officialFactory'), which a ready probe supplies.
+    ProbedFactory
+  | -- | This one, until a ready probe replaces it with the official one.
+    GivenFactory ClaudeClientFactory
+
+-- | The readiness the adapter starts with.
+data ClientReadiness
+  = -- | None: 'startClaude' refuses until a probe is ready.
+    Unprobed
+  | -- | This installation and CLI, as a ready probe would record them.
+    ReadyWith (RuntimeInstallation, FilePath)
 
 -- | The monotonic clock, the official sidecar, and the absolute @python3@
 -- on @PATH@.
 claudeAdapterOptions :: IO ClaudeAdapterOptions
 claudeAdapterOptions = do
   python <- fromMaybe "/usr/bin/python3" <$> findExecutable "python3"
-  pure (ClaudeAdapterOptions getMonotonicTime Nothing (officialClaudeProbeHooks claudeSidecar) python Nothing)
+  pure (ClaudeAdapterOptions getMonotonicTime ProbedFactory (officialClaudeProbeHooks claudeSidecar) python Unprobed)
 
 data Readiness = Readiness
   { installation :: Maybe RuntimeInstallation
@@ -1398,7 +1414,13 @@ newClaudeRuntimeAdapter
   :: ClaudeRuntimeConfig -> ClaudeContinuationCodec -> ClaudeTurnOperations -> HostConnectionCustody -> ClaudeAdapterOptions -> IO ClaudeRuntimeAdapter
 newClaudeRuntimeAdapter config0 codec turns custody options = do
   config <- newClaudeRuntimeConfig config0
-  readiness <- newMVar (Readiness (fst <$> options.ready) (snd <$> options.ready) options.clientFactory)
+  let (installation, cli) = case options.ready of
+        Unprobed -> (Nothing, Nothing)
+        ReadyWith (installed, path) -> (Just installed, Just path)
+      factory = case options.clientFactory of
+        ProbedFactory -> Nothing
+        GivenFactory given -> Just given
+  readiness <- newMVar (Readiness installation cli factory)
   operations <- newMVar Map.empty
   pure
     ClaudeRuntimeAdapter
@@ -1479,9 +1501,9 @@ probeClaude a cliPath = do
                         verdict ProbeReady (Just installation) [] (Just absolute) (Just (officialFactory a.hooks.sdk))
   where
     runVersion cli = do
-      outcome <- try (runBounded [cli, "--version"] Nothing)
+      outcome <- try (runBounded [cli, "--version"] InheritEnvironment)
       case outcome of
-        Right (Just (ExitSuccess, output, _)) -> case TE.decodeUtf8' output of
+        Right (Finished ExitSuccess output _) -> case TE.decodeUtf8' output of
           Right text -> pure (Just text)
           Left _ -> throwAgenticus (OtherError "UnicodeDecodeError") "'utf-8' codec can't decode the Claude version output"
         Right _ -> pure Nothing

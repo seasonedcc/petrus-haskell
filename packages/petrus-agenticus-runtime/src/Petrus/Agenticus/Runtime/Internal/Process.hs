@@ -26,6 +26,8 @@ module Petrus.Agenticus.Runtime.Internal.Process
     -- * Processes
   , waitExit
   , exitInt
+  , ChildEnvironment (..)
+  , BoundedRun (..)
   , runBounded
   , removeRoot
   , splitLines
@@ -204,17 +206,38 @@ waitExit process seconds = do
             if now >= end then pure Nothing else threadDelay 2000 >> go
   go
 
+-- | The environment a bounded child runs with.
+data ChildEnvironment
+  = -- | The caller's own.
+    InheritEnvironment
+  | -- | Exactly these variables, and none of the caller's.
+    OnlyEnvironment [(String, String)]
+  deriving stock (Eq, Show)
+
+-- | How a bounded run ended.
+data BoundedRun
+  = -- | The child exited within the bound: its exit code, stdout and stderr.
+    Finished ExitCode ByteString ByteString
+  | -- | It did not finish within the 10-second bound: it was still writing,
+    -- its output closed but it had not exited, or its output could not be
+    -- read. Its process group was killed.
+    Unfinished
+  deriving stock (Eq, Show)
+
 -- | @subprocess.run(argv, env=environment, capture_output=True,
 -- timeout=10)@: capture stdout and stderr as bytes. The child runs in its
 -- own session with an empty stdin; its process group is killed when the
 -- bound expires or the caller is interrupted. An executable that cannot be
 -- started is an 'IOException'.
-runBounded :: [String] -> Maybe [(String, String)] -> IO (Maybe (ExitCode, ByteString, ByteString))
+runBounded :: [String] -> ChildEnvironment -> IO BoundedRun
 runBounded argv environment = case argv of
   [] -> ioError (userError "empty argv")
   executable : arguments -> mask $ \restore -> do
+    let variables = case environment of
+          InheritEnvironment -> Nothing
+          OnlyEnvironment pairs -> Just pairs
     (input, output, errors, process) <-
-      spawnPiped executable arguments Nothing environment
+      spawnPiped executable arguments Nothing variables
         >>= maybe (ioError (mkIOError doesNotExistErrorType "runBounded" Nothing (Just executable))) pure
     let stop = do
           running <- isNothing <$> getProcessExitCode process
@@ -231,9 +254,9 @@ runBounded argv environment = case argv of
     hClose input `catch` \(_ :: IOException) -> pure ()
     finished <- restore (timeout (10 * 1000000) (try capture)) `onException` stop
     case finished of
-      Just (Right (out, err, Just code)) -> pure (Just (code, out, err))
-      Just (Left (_ :: IOException)) -> stop >> pure Nothing
-      _ -> stop >> pure Nothing
+      Just (Right (out, err, Just code)) -> pure (Finished code out err)
+      Just (Left (_ :: IOException)) -> stop >> pure Unfinished
+      _ -> stop >> pure Unfinished
 
 -- | Remove an owned mode-0700 private root that still has the given
 -- @(device, inode)@ identity; 'True' when it is proven absent.

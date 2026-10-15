@@ -7,6 +7,7 @@ import Control.Exception (finally, try)
 import Control.Monad (forM_, void, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
+import Data.ByteString.Char8 qualified as BC
 import Data.IORef
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
@@ -44,6 +45,7 @@ import Petrus.Agenticus.Hands.Gateway (CallEvidence (..), GatewayCounters (..), 
 import Petrus.Agenticus.Hands.Grants (closeGrant, grantSpec, openGrant)
 import Petrus.Agenticus.Program.Descriptor (ProgramOwnership (..))
 import Petrus.Agenticus.Runtime.Custody (HostMaterialization (..))
+import Petrus.Agenticus.Runtime.Internal.Process (BoundedRun (..), ChildEnvironment (..), runBounded)
 import Petrus.Motus.Execution.Spawn (spawnPiped)
 import Petrus.Agenticus.Runtime.Operation (RuntimeCleanupDisposition (..), RuntimeOperation (..), RuntimeOperationCleanup, cleanupVerified)
 import Petrus.Agenticus.Runtime.Pi.Internal
@@ -55,6 +57,7 @@ import Petrus.Agenticus.Thread.Lifecycle (CancellationDisposition (..), TurnOutc
 import Petrus.Json (Json (..))
 import Petrus.Json qualified as J
 import System.Directory (canonicalizePath, createDirectory, findExecutable, removeDirectoryRecursive)
+import System.Environment (getEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO (hClose)
@@ -78,6 +81,7 @@ spec = describe "test_pi" $ do
   recoverySpecs
   surrogateSpecs
   spawnSpecs
+  boundedSpecs
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -1468,3 +1472,28 @@ spawnSpecs = describe "spawnPiped (not in the reference)" $ do
   it "reports a helper that cannot be started" $ do
     started <- spawnPiped "/nonexistent/helper" [] Nothing Nothing
     isNothing started `shouldBe` True
+
+-- ---------------------------------------------------------------------------
+-- Bounded probe commands (not in the reference)
+
+-- | The probes' version and @--probe@ commands run through 'runBounded'
+-- (@DIVERGENCES.md@, item 2).
+boundedSpecs :: Spec
+boundedSpecs = describe "runBounded (not in the reference)" $ do
+  it "runs the child in the caller's environment" $ do
+    path <- getEnv "PATH"
+    runBounded ["/usr/bin/env"] InheritEnvironment >>= \case
+      Finished code out err -> do
+        (code, err) `shouldBe` (ExitSuccess, "")
+        BC.lines out `shouldContain` [BC.pack ("PATH=" <> path)]
+      Unfinished -> expectationFailure "env did not finish"
+  it "runs the child in exactly the environment given" $
+    runBounded ["/usr/bin/env"] (OnlyEnvironment [("PATH", "/bin:/usr/bin"), ("LANG", "C.UTF-8")])
+      `shouldReturn` Finished ExitSuccess "PATH=/bin:/usr/bin\nLANG=C.UTF-8\n" ""
+  it "reports a child that exits within the bound with its code, stdout and stderr" $
+    runBounded ["/bin/sh", "-c", "printf out; printf err >&2; exit 3"] (OnlyEnvironment [("PATH", "/bin:/usr/bin")])
+      `shouldReturn` Finished (ExitFailure 3) "out" "err"
+  it "reports a child still running after 10 seconds as unfinished" $
+    runBounded ["/bin/sleep", "30"] InheritEnvironment `shouldReturn` Unfinished
+  it "reports a child that closed its output but has not exited after 10 seconds as unfinished" $
+    runBounded ["/bin/sh", "-c", "exec >&- 2>&-; exec /bin/sleep 30"] InheritEnvironment `shouldReturn` Unfinished

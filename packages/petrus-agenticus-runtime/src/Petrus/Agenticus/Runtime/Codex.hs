@@ -152,7 +152,7 @@ import Petrus.Agenticus.Program.Descriptor
   , continuationRequirement
   )
 import Petrus.Agenticus.Runtime.Custody
-import Petrus.Agenticus.Runtime.Internal.Process (runBounded)
+import Petrus.Agenticus.Runtime.Internal.Process (BoundedRun (..), ChildEnvironment (..), runBounded)
 import Petrus.Agenticus.Runtime.Internal.HostSupport (observedPlatform, outputError, pyJsonLoadsBytes, pyStrip, sanitizeOutput)
 import Petrus.Agenticus.Runtime.Installation
   ( ProbeDisposition (..)
@@ -807,9 +807,9 @@ officialCodexProbeHooks =
     , run = \case
         [] -> pure Nothing
         program : arguments -> do
-          outcome <- try (runBounded (program : arguments) Nothing)
+          outcome <- try (runBounded (program : arguments) InheritEnvironment)
           case outcome of
-            Right (Just (ExitSuccess, output, _)) -> case TE.decodeUtf8' output of
+            Right (Finished ExitSuccess output _) -> case TE.decodeUtf8' output of
               Right value -> pure (Just value)
               Left _ -> throwAgenticus (OtherError "UnicodeDecodeError") "'utf-8' codec can't decode the Codex probe output"
             Right _ -> pure Nothing

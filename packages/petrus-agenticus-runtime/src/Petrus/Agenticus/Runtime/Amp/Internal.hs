@@ -152,7 +152,7 @@ import Petrus.Agenticus.Runtime.Installation
   )
 import Petrus.Agenticus.Runtime.Internal.Lifecycle (Lifecycle, LifecycleTexts (..), newLifecycle)
 import Petrus.Agenticus.Runtime.Internal.Lifecycle qualified as Lifecycle
-import Petrus.Agenticus.Runtime.Internal.Process (runBounded, micros)
+import Petrus.Agenticus.Runtime.Internal.Process (BoundedRun (..), ChildEnvironment (..), runBounded, micros)
 import Petrus.Agenticus.Runtime.Operation
   ( RuntimeCleanupDisposition (..)
   , RuntimeOperation (..)
@@ -964,8 +964,8 @@ officialProbeHooks s =
     , runCli = \case
         [] -> throwIO (userError "empty argv")
         executable' : arguments ->
-          runBounded (executable' : arguments) Nothing >>= \case
-            Just (ExitSuccess, out, _) -> pure (TE.decodeUtf8With (\_ _ -> Just '\xfffd') out)
+          runBounded (executable' : arguments) InheritEnvironment >>= \case
+            Finished ExitSuccess out _ -> pure (TE.decodeUtf8With (\_ _ -> Just '\xfffd') out)
             _ -> throwIO (userError "command failed")
     , sdkProtocolReady =
         query "protocol" >>= \case
