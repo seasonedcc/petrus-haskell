@@ -18,14 +18,14 @@ files whose package sources have changed since.
 
 | Package | Results | Measured at | Rows | Worst | Best | |
 | --- | --- | --- | ---: | ---: | ---: | --- |
-| `hamsterdan-agents` | [RESULTS.md](../packages/hamsterdan-agents/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 6 | 1.03× | 5.23× |  |
+| `hamsterdan-agents` | [RESULTS.md](../packages/hamsterdan-agents/bench/RESULTS.md) | `df073f3`, carried to `fa21af7` | 6 | 1.03× | 5.23× |  |
 | `hamsterdan-contracts` | [RESULTS.md](../packages/hamsterdan-contracts/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 7 | 1.13× | 5.39× |  |
 | `hamsterdan-export` | [RESULTS.md](../packages/hamsterdan-export/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 6 | 1.12× | 36.4× |  |
 | `hamsterdan-github` | [RESULTS.md](../packages/hamsterdan-github/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 8 | 1.09× | 92.7× |  |
-| `hamsterdan-host` | [RESULTS.md](../packages/hamsterdan-host/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 18 | 1.13× | 107× |  |
-| `hamsterdan-operator` | [RESULTS.md](../packages/hamsterdan-operator/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 7 | 1.04× | 32.6× |  |
+| `hamsterdan-host` | [RESULTS.md](../packages/hamsterdan-host/bench/RESULTS.md) | `df073f3`, carried to `fa21af7` | 18 | 1.13× | 107× |  |
+| `hamsterdan-operator` | [RESULTS.md](../packages/hamsterdan-operator/bench/RESULTS.md) | `df073f3`, carried to `fa21af7` | 7 | 1.04× | 32.6× |  |
 | `hamsterdan-readiness` | [RESULTS.md](../packages/hamsterdan-readiness/bench/RESULTS.md) | `b4d1ccb` | 13 | 3.62× | 14.0× |  |
-| `hamsterdan-testing` | [RESULTS.md](../packages/hamsterdan-testing/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 22 | 1.62× | 24.0× |  |
+| `hamsterdan-testing` | [RESULTS.md](../packages/hamsterdan-testing/bench/RESULTS.md) | `df073f3`, carried to `fa21af7` | 22 | 1.62× | 24.0× |  |
 | `petrus-activity` | [RESULTS.md](../packages/petrus-activity/bench/RESULTS.md) | `561723e`, carried to `b4d1ccb` | 7 | 2.42× | 83.1× |  |
 | `petrus-agenticus` | [RESULTS.md](../packages/petrus-agenticus/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 5 | 1.85× | 4.27× |  |
 | `petrus-agenticus-core` | [RESULTS.md](../packages/petrus-agenticus-core/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 1 | 2.70× | 7.30× |  |
@@ -34,9 +34,9 @@ files whose package sources have changed since.
 | `petrus-agenticus-core` | [results-effect.md](../packages/petrus-agenticus-core/bench/results-effect.md) | `13f7a84`, carried to `b4d1ccb` | 5 | 2.46× | 15.6× |  |
 | `petrus-agenticus-core` | [results-hands.md](../packages/petrus-agenticus-core/bench/results-hands.md) | `13f7a84`, carried to `b4d1ccb` | 5 | 1.84× | 4.05× |  |
 | `petrus-agenticus-core` | [results-thread.md](../packages/petrus-agenticus-core/bench/results-thread.md) | `13f7a84`, carried to `b4d1ccb` | 5 | 1.95× | 2 023× |  |
-| `petrus-agenticus-runtime` | [RESULTS.md](../packages/petrus-agenticus-runtime/bench/RESULTS.md) | `df073f3`, carried to `b4d1ccb` | 2 | 1.99× | 3.17× |  |
-| `petrus-agenticus-runtime` | [results-hosts.md](../packages/petrus-agenticus-runtime/bench/results-hosts.md) | `df073f3`, carried to `b4d1ccb` | 14 | 1.10× | 6.57× |  |
-| `petrus-agenticus-runtime` | [results-pi.md](../packages/petrus-agenticus-runtime/bench/results-pi.md) | `df073f3`, carried to `b4d1ccb` | 10 | 1.07× | 6.16× |  |
+| `petrus-agenticus-runtime` | [RESULTS.md](../packages/petrus-agenticus-runtime/bench/RESULTS.md) | `df073f3`, carried to `fa21af7` | 2 | 1.99× | 3.17× |  |
+| `petrus-agenticus-runtime` | [results-hosts.md](../packages/petrus-agenticus-runtime/bench/results-hosts.md) | `df073f3`, carried to `fa21af7` | 14 | 1.10× | 6.57× |  |
+| `petrus-agenticus-runtime` | [results-pi.md](../packages/petrus-agenticus-runtime/bench/results-pi.md) | `df073f3`, carried to `fa21af7` | 10 | 1.07× | 6.16× |  |
 | `petrus-cel` | [RESULTS.md](../packages/petrus-cel/bench/RESULTS.md) | `4b2f7e6`, carried to `b4d1ccb` | 21 | 9.95× | 337× |  |
 | `petrus-dsl` | [RESULTS.md](../packages/petrus-dsl/bench/RESULTS.md) | `f82d998`, carried to `b4d1ccb` | 10 | 2.33× | 11.3× |  |
 | `petrus-dst` | [RESULTS.md](../packages/petrus-dst/bench/RESULTS.md) | `b4d1ccb` | 11 | 1.03× | 6.09× |  |
