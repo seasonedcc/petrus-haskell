@@ -76,9 +76,11 @@ findWithDefault d k m = maybe d id (lookup k m)
 member :: Ord k => k -> OMap k v -> Bool
 member k (OMap m _) = Map.member k m
 
--- | Insert or replace; a present key keeps its position.
+-- | Insert or replace; a present key keeps its position. Forces the value, since
+-- 'Map.Strict' stops at the pair: a replayed deposit left as a thunk keeps the whole
+-- map it was computed from.
 insert :: Ord k => k -> v -> OMap k v -> OMap k v
-insert k v (OMap m n) = case Map.lookup k m of
+insert k !v (OMap m n) = case Map.lookup k m of
   Just (stamp, _) -> OMap (Map.insert k (stamp, v) m) n
   Nothing -> OMap (Map.insert k (n, v) m) (n + 1)
 

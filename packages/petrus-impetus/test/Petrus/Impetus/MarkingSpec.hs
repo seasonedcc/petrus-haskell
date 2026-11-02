@@ -2,10 +2,12 @@
 -- @tests/petrus/impetus/petrinet/test_token_queue.py@.
 module Petrus.Impetus.MarkingSpec (spec) where
 
+import Control.Exception (evaluate)
 import Data.Foldable (toList)
 import Data.Functor.Identity (runIdentity)
 import Data.List (findIndex)
 import Data.Sequence qualified as Seq
+import Petrus.Impetus.Internal.OMap qualified as OMap
 import Petrus.Impetus.Petrinet
 import Petrus.Impetus.Scope (lifecycleScope)
 import Petrus.Impetus.TestSupport
@@ -244,3 +246,13 @@ spec = describe "Petrinet.Marking" $ do
         let queue = timeBlind [tok "A", tok "B"]
         toList (queueTokens queue) `shouldBe` [tok "A", tok "B"]
         toList (queueInstants queue) `shouldBe` [Nothing, Nothing]
+
+  -- Not in the reference. A marking keeps each place's queue in an OMap. Left unevaluated, a
+  -- replayed deposit keeps the map it was computed from, so the peak heap of a replay goes with
+  -- rows times the tokens in a place consumed from.
+  describe "OMap.insert" $ do
+    it "forces the value it stores under a new key" $
+      evaluate (OMap.insert ("key" :: String) (error "forced" :: Int) OMap.empty) `shouldThrow` errorCall "forced"
+
+    it "forces the value it stores over a present key" $
+      evaluate (OMap.insert ("key" :: String) (error "forced" :: Int) (OMap.singleton "key" 1)) `shouldThrow` errorCall "forced"
