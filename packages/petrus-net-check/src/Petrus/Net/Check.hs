@@ -74,9 +74,10 @@ data Report = Report
 
 data Checked = Checked
   { reports :: [Report]
-  , invariants :: Either Text [Map Text Integer]
+  , invariants :: ~(Either Text [Map Text Integer])
   -- ^ The net's minimal semi-positive P-invariants, over its places and
-  -- its Activities in flight.
+  -- its Activities in flight. Lazy, unlike the reports, so a caller that
+  -- reads only the reports never pays for Farkas' algorithm.
   }
   deriving stock (Eq, Show)
 
